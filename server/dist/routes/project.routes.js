@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const project_controller_1 = require("../controllers/project.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const auth_validator_1 = require("../validators/auth.validator");
+const project_validator_1 = require("../validators/project.validator");
+const client_1 = require("@prisma/client");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticate);
+router.get('/', (req, res, next) => project_controller_1.projectController.listProjects(req, res, next));
+router.post('/', (0, auth_middleware_1.requireRoles)(client_1.UserRole.ADMIN, client_1.UserRole.PROJECT_MANAGER), (0, auth_validator_1.validate)(project_validator_1.createProjectSchema), (req, res, next) => project_controller_1.projectController.createProject(req, res, next));
+router.get('/:id', (req, res, next) => project_controller_1.projectController.getProjectById(req, res, next));
+router.patch('/:id', (0, auth_middleware_1.requireRoles)(client_1.UserRole.ADMIN, client_1.UserRole.PROJECT_MANAGER), (0, auth_validator_1.validate)(project_validator_1.updateProjectSchema), (req, res, next) => project_controller_1.projectController.updateProject(req, res, next));
+router.delete('/:id', (0, auth_middleware_1.requireRoles)(client_1.UserRole.ADMIN, client_1.UserRole.PROJECT_MANAGER), (req, res, next) => project_controller_1.projectController.deleteProject(req, res, next));
+exports.default = router;

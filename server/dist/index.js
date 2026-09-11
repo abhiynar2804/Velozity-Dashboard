@@ -13,6 +13,11 @@ const cookie_parser_1 = __importDefault(require("cookie-parser"));
 const prisma_1 = __importDefault(require("./utils/prisma"));
 exports.prisma = prisma_1.default;
 const auth_routes_1 = __importDefault(require("./routes/auth.routes"));
+const user_routes_1 = __importDefault(require("./routes/user.routes"));
+const client_routes_1 = __importDefault(require("./routes/client.routes"));
+const project_routes_1 = __importDefault(require("./routes/project.routes"));
+const task_routes_1 = __importDefault(require("./routes/task.routes"));
+const activity_routes_1 = __importDefault(require("./routes/activity.routes"));
 const auth_middleware_1 = require("./middleware/auth.middleware");
 const error_middleware_1 = require("./middleware/error.middleware");
 const ApiResponse_1 = require("./utils/ApiResponse");
@@ -41,8 +46,13 @@ exports.app.get('/health', async (req, res) => {
         res.status(500).json(ApiResponse_1.ApiResponse.error('Database connection failed', 500, error?.message));
     }
 });
-// Authentication Routes
+// Mount Routes
 exports.app.use('/api/auth', auth_routes_1.default);
+exports.app.use('/api/users', user_routes_1.default);
+exports.app.use('/api/clients', client_routes_1.default);
+exports.app.use('/api/projects', project_routes_1.default);
+exports.app.use('/api/tasks', task_routes_1.default);
+exports.app.use('/api/activities', activity_routes_1.default);
 // Protected Test Route
 exports.app.get('/api/protected', auth_middleware_1.authenticate, (req, res) => {
     res.status(200).json(ApiResponse_1.ApiResponse.success('Access granted to protected route', {

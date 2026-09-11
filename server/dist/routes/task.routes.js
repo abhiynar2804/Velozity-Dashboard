@@ -1,0 +1,16 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const task_controller_1 = require("../controllers/task.controller");
+const auth_middleware_1 = require("../middleware/auth.middleware");
+const auth_validator_1 = require("../validators/auth.validator");
+const task_validator_1 = require("../validators/task.validator");
+const client_1 = require("@prisma/client");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.authenticate);
+router.get('/', (req, res, next) => task_controller_1.taskController.listTasks(req, res, next));
+router.post('/', (0, auth_middleware_1.requireRoles)(client_1.UserRole.ADMIN, client_1.UserRole.PROJECT_MANAGER), (0, auth_validator_1.validate)(task_validator_1.createTaskSchema), (req, res, next) => task_controller_1.taskController.createTask(req, res, next));
+router.get('/:id', (req, res, next) => task_controller_1.taskController.getTaskById(req, res, next));
+router.patch('/:id', (req, res, next) => task_controller_1.taskController.updateTask(req, res, next));
+router.delete('/:id', (0, auth_middleware_1.requireRoles)(client_1.UserRole.ADMIN, client_1.UserRole.PROJECT_MANAGER), (req, res, next) => task_controller_1.taskController.deleteTask(req, res, next));
+exports.default = router;
