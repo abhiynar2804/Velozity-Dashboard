@@ -1,8 +1,11 @@
-import prisma from '../utils/prisma';
-import { UserRole } from '@prisma/client';
-import { AppError } from './auth.service';
-import { CreateProjectInput, UpdateProjectInput } from '../validators/project.validator';
-import { AccessTokenPayload } from '../utils/token.utils';
+import prisma from "../utils/prisma";
+import { UserRole } from "@prisma/client";
+import { AppError } from "./auth.service";
+import {
+  CreateProjectInput,
+  UpdateProjectInput,
+} from "../validators/project.validator";
+import { AccessTokenPayload } from "../utils/token.utils";
 
 export class ProjectService {
   /**
@@ -34,7 +37,7 @@ export class ProjectService {
             select: { id: true, title: true, status: true, priority: true },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       });
     }
 
@@ -51,7 +54,7 @@ export class ProjectService {
             select: { tasks: true },
           },
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: { createdAt: "desc" },
       });
     }
 
@@ -64,21 +67,29 @@ export class ProjectService {
           select: { tasks: true },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
   }
 
   /**
    * Create a project (Admin or PM)
    */
-  async createProject(requestUser: AccessTokenPayload, input: CreateProjectInput) {
+  async createProject(
+    requestUser: AccessTokenPayload,
+    input: CreateProjectInput,
+  ) {
     if (requestUser.role === UserRole.DEVELOPER) {
-      throw new AppError('Access denied: Developers cannot create projects', 403);
+      throw new AppError(
+        "Access denied: Developers cannot create projects",
+        403,
+      );
     }
 
-    const client = await prisma.client.findUnique({ where: { id: input.clientId } });
+    const client = await prisma.client.findUnique({
+      where: { id: input.clientId },
+    });
     if (!client) {
-      throw new AppError('Client not found', 404);
+      throw new AppError("Client not found", 404);
     }
 
     return prisma.project.create({
@@ -106,14 +117,16 @@ export class ProjectService {
         creator: { select: { id: true, name: true, email: true } },
         tasks: {
           include: {
-            assignedDeveloper: { select: { id: true, name: true, email: true } },
+            assignedDeveloper: {
+              select: { id: true, name: true, email: true },
+            },
           },
         },
       },
     });
 
     if (!project) {
-      throw new AppError('Project not found', 404);
+      throw new AppError("Project not found", 404);
     }
 
     // RBAC and Ownership Check:
@@ -123,50 +136,86 @@ export class ProjectService {
 
     if (requestUser.role === UserRole.PROJECT_MANAGER) {
       if (project.createdById !== requestUser.userId) {
-        throw new AppError('Access denied: You cannot view projects managed by other Project Managers', 403);
+        throw new AppError(
+          "Access denied: You cannot view projects managed by other Project Managers",
+          403,
+        );
       }
       return project;
     }
 
     if (requestUser.role === UserRole.DEVELOPER) {
       // Check if developer has any assigned tasks in this project
-      const hasTask = project.tasks.some((t) => t.assignedDeveloperId === requestUser.userId);
+      const hasTask = project.tasks.some(
+        (t) => t.assignedDeveloperId === requestUser.userId,
+      );
       if (!hasTask) {
-        throw new AppError('Access denied: You are not assigned to any tasks in this project', 403);
+        throw new AppError(
+          "Access denied: You are not assigned to any tasks in this project",
+          403,
+        );
       }
 
       // Filter tasks to only assigned tasks for this developer
       return {
         ...project,
-        tasks: project.tasks.filter((t) => t.assignedDeveloperId === requestUser.userId),
+        tasks: project.tasks.filter(
+          (t) => t.assignedDeveloperId === requestUser.userId,
+        ),
       };
     }
 
-    throw new AppError('Unauthorized', 401);
+    throw new AppError("Unauthorized", 401);
   }
 
   /**
    * Update project (Admin or owning PM)
    */
-  async updateProject(requestUser: AccessTokenPayload, projectId: string, input: UpdateProjectInput) {
+  async updateProject(
+    requestUser: AccessTokenPayload,
+    projectId: string,
+    input: UpdateProjectInput,
+  ) {
     if (requestUser.role === UserRole.DEVELOPER) {
-      throw new AppError('Access denied: Developers cannot update projects', 403);
+      throw new AppError(
+        "Access denied: Developers cannot update projects",
+        403,
+      );
     }
 
-    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
     if (!project) {
-      throw new AppError('Project not found', 404);
+      throw new AppError("Project not found", 404);
     }
 
-    if (requestUser.role === UserRole.PROJECT_MANAGER && project.createdById !== requestUser.userId) {
-      throw new AppError('Access denied: You cannot update projects managed by other Project Managers', 403);
+    if (
+      requestUser.role === UserRole.PROJECT_MANAGER &&
+      project.createdById !== requestUser.userId
+    ) {
+      throw new AppError(
+        "Access denied: You cannot update projects managed by other Project Managers",
+        403,
+      );
+    }
+
+    if (input.clientId !== undefined) {
+      const client = await prisma.client.findUnique({
+        where: { id: input.clientId },
+      });
+      if (!client) {
+        throw new AppError("Client not found", 404);
+      }
     }
 
     return prisma.project.update({
       where: { id: projectId },
       data: {
         ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.description !== undefined ? { description: input.description } : {}),
+        ...(input.description !== undefined
+          ? { description: input.description }
+          : {}),
         ...(input.clientId !== undefined ? { clientId: input.clientId } : {}),
       },
       include: {
@@ -181,16 +230,27 @@ export class ProjectService {
    */
   async deleteProject(requestUser: AccessTokenPayload, projectId: string) {
     if (requestUser.role === UserRole.DEVELOPER) {
-      throw new AppError('Access denied: Developers cannot delete projects', 403);
+      throw new AppError(
+        "Access denied: Developers cannot delete projects",
+        403,
+      );
     }
 
-    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+    });
     if (!project) {
-      throw new AppError('Project not found', 404);
+      throw new AppError("Project not found", 404);
     }
 
-    if (requestUser.role === UserRole.PROJECT_MANAGER && project.createdById !== requestUser.userId) {
-      throw new AppError('Access denied: You cannot delete projects managed by other Project Managers', 403);
+    if (
+      requestUser.role === UserRole.PROJECT_MANAGER &&
+      project.createdById !== requestUser.userId
+    ) {
+      throw new AppError(
+        "Access denied: You cannot delete projects managed by other Project Managers",
+        403,
+      );
     }
 
     return prisma.project.delete({

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.validate = exports.loginSchema = exports.registerSchema = void 0;
+exports.idParamSchema = exports.validateParams = exports.validateQuery = exports.validate = exports.loginSchema = exports.registerSchema = void 0;
 const zod_1 = require("zod");
 const ApiResponse_1 = require("../utils/ApiResponse");
 const client_1 = require("@prisma/client");
@@ -31,3 +31,40 @@ const validate = (schema) => {
     };
 };
 exports.validate = validate;
+const validateQuery = (schema) => {
+    return async (req, res, next) => {
+        try {
+            req.query = await schema.parseAsync(req.query);
+            next();
+        }
+        catch (error) {
+            if (error instanceof zod_1.z.ZodError) {
+                const errorMessages = error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ');
+                res.status(400).json(ApiResponse_1.ApiResponse.error(errorMessages, 400, error.issues));
+                return;
+            }
+            next(error);
+        }
+    };
+};
+exports.validateQuery = validateQuery;
+const validateParams = (schema) => {
+    return async (req, res, next) => {
+        try {
+            req.params = await schema.parseAsync(req.params);
+            next();
+        }
+        catch (error) {
+            if (error instanceof zod_1.z.ZodError) {
+                const errorMessages = error.issues.map((err) => `${err.path.join('.')}: ${err.message}`).join(', ');
+                res.status(400).json(ApiResponse_1.ApiResponse.error(errorMessages, 400, error.issues));
+                return;
+            }
+            next(error);
+        }
+    };
+};
+exports.validateParams = validateParams;
+exports.idParamSchema = zod_1.z.object({
+    id: zod_1.z.string().cuid('ID must be a valid CUID'),
+});

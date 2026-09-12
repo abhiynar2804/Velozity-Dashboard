@@ -1,8 +1,13 @@
-import prisma from '../utils/prisma';
-import { NotificationType, TaskPriority, TaskStatus, UserRole } from '@prisma/client';
-import { AppError } from './auth.service';
-import { CreateTaskInput, UpdateTaskInput } from '../validators/task.validator';
-import { AccessTokenPayload } from '../utils/token.utils';
+import prisma from "../utils/prisma";
+import {
+  NotificationType,
+  TaskPriority,
+  TaskStatus,
+  UserRole,
+} from "@prisma/client";
+import { AppError } from "./auth.service";
+import { CreateTaskInput, UpdateTaskInput } from "../validators/task.validator";
+import { AccessTokenPayload } from "../utils/token.utils";
 
 export class TaskService {
   /**
@@ -11,7 +16,16 @@ export class TaskService {
    * - PM: only tasks in projects created by this PM
    * - Developer: only tasks assigned to this Developer
    */
-  async listTasks(requestUser: AccessTokenPayload, query?: { projectId?: string; status?: TaskStatus }) {
+  async listTasks(
+    requestUser: AccessTokenPayload,
+    query?: {
+      projectId?: string;
+      status?: TaskStatus;
+      priority?: TaskPriority;
+      from?: string;
+      to?: string;
+    },
+  ) {
     let whereClause: any = {};
 
     if (requestUser.role === UserRole.DEVELOPER) {
@@ -28,6 +42,17 @@ export class TaskService {
       whereClause.status = query.status;
     }
 
+    if (query?.priority) {
+      whereClause.priority = query.priority;
+    }
+
+    if (query?.from || query?.to) {
+      whereClause.dueDate = {
+        ...(query.from ? { gte: new Date(query.from) } : {}),
+        ...(query.to ? { lte: new Date(query.to) } : {}),
+      };
+    }
+
     return prisma.task.findMany({
       where: whereClause,
       include: {
@@ -38,7 +63,7 @@ export class TaskService {
           select: { id: true, name: true, email: true },
         },
       },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
     });
   }
 
@@ -50,22 +75,32 @@ export class TaskService {
    */
   async createTask(requestUser: AccessTokenPayload, input: CreateTaskInput) {
     if (requestUser.role === UserRole.DEVELOPER) {
-      throw new AppError('Access denied: Developers cannot create tasks', 403);
+      throw new AppError("Access denied: Developers cannot create tasks", 403);
     }
 
-    const project = await prisma.project.findUnique({ where: { id: input.projectId } });
+    const project = await prisma.project.findUnique({
+      where: { id: input.projectId },
+    });
     if (!project) {
-      throw new AppError('Project not found', 404);
+      throw new AppError("Project not found", 404);
     }
 
-    if (requestUser.role === UserRole.PROJECT_MANAGER && project.createdById !== requestUser.userId) {
-      throw new AppError('Access denied: You cannot create tasks in projects managed by other Project Managers', 403);
+    if (
+      requestUser.role === UserRole.PROJECT_MANAGER &&
+      project.createdById !== requestUser.userId
+    ) {
+      throw new AppError(
+        "Access denied: You cannot create tasks in projects managed by other Project Managers",
+        403,
+      );
     }
 
     if (input.assignedDeveloperId) {
-      const dev = await prisma.user.findUnique({ where: { id: input.assignedDeveloperId } });
-      if (!dev) {
-        throw new AppError('Assigned developer not found', 404);
+      const dev = await prisma.user.findUnique({
+        where: { id: input.assignedDeveloperId },
+      });
+      if (!dev || dev.role !== UserRole.DEVELOPER) {
+        throw new AppError("Assigned user is not a developer", 400);
       }
     }
 
@@ -120,13 +155,13 @@ export class TaskService {
           include: {
             user: { select: { id: true, name: true } },
           },
-          orderBy: { createdAt: 'desc' },
+          orderBy: { createdAt: "desc" },
         },
       },
     });
 
     if (!task) {
-      throw new AppError('Task not found', 404);
+      throw new AppError("Task not found", 404);
     }
 
     if (requestUser.role === UserRole.ADMIN) {
@@ -135,19 +170,25 @@ export class TaskService {
 
     if (requestUser.role === UserRole.PROJECT_MANAGER) {
       if (task.project.createdById !== requestUser.userId) {
-        throw new AppError('Access denied: You cannot view tasks from another PM\'s project', 403);
+        throw new AppError(
+          "Access denied: You cannot view tasks from another PM's project",
+          403,
+        );
       }
       return task;
     }
 
     if (requestUser.role === UserRole.DEVELOPER) {
       if (task.assignedDeveloperId !== requestUser.userId) {
-        throw new AppError('Access denied: You cannot view tasks assigned to other developers', 403);
+        throw new AppError(
+          "Access denied: You cannot view tasks assigned to other developers",
+          403,
+        );
       }
       return task;
     }
 
-    throw new AppError('Unauthorized', 401);
+    throw new AppError("Unauthorized", 401);
   }
 
   /**
@@ -159,7 +200,7 @@ export class TaskService {
   async updateTask(
     requestUser: AccessTokenPayload,
     taskId: string,
-    input: UpdateTaskInput
+    input: UpdateTaskInput,
   ) {
     const task = await prisma.task.findUnique({
       where: { id: taskId },
@@ -169,13 +210,16 @@ export class TaskService {
     });
 
     if (!task) {
-      throw new AppError('Task not found', 404);
+      throw new AppError("Task not found", 404);
     }
 
     // Developer authorization & constraints
     if (requestUser.role === UserRole.DEVELOPER) {
       if (task.assignedDeveloperId !== requestUser.userId) {
-        throw new AppError('Access denied: You cannot update tasks assigned to other developers', 403);
+        throw new AppError(
+          "Access denied: You cannot update tasks assigned to other developers",
+          403,
+        );
       }
 
       // Ensure developer only modifies status
@@ -186,55 +230,66 @@ export class TaskService {
         input.priority !== undefined ||
         input.dueDate !== undefined
       ) {
-        throw new AppError('Access denied: Developers can only update task status', 403);
+        throw new AppError(
+          "Access denied: Developers can only update task status",
+          403,
+        );
       }
 
       if (!input.status) {
-        throw new AppError('Status is required for developer task update', 400);
+        throw new AppError("Status is required for developer task update", 400);
       }
 
       const oldStatus = task.status;
       const newStatus = input.status;
 
-      const updatedTask = await prisma.task.update({
-        where: { id: taskId },
-        data: { status: newStatus },
-        include: {
-          project: true,
-          assignedDeveloper: { select: { id: true, name: true, email: true } },
-        },
-      });
-
-      // Log status transition activity
-      if (oldStatus !== newStatus) {
-        await prisma.activity.create({
-          data: {
-            projectId: task.projectId,
-            taskId: task.id,
-            userId: requestUser.userId,
-            oldStatus,
-            newStatus,
+      return prisma.$transaction(async (tx) => {
+        const updatedTask = await tx.task.update({
+          where: { id: taskId },
+          data: { status: newStatus },
+          include: {
+            project: true,
+            assignedDeveloper: {
+              select: { id: true, name: true, email: true },
+            },
           },
         });
 
-        // Notify project manager if status is IN_REVIEW
-        if (newStatus === TaskStatus.IN_REVIEW) {
-          await prisma.notification.create({
+        if (oldStatus !== newStatus) {
+          await tx.activity.create({
             data: {
-              userId: task.project.createdById,
-              type: NotificationType.TASK_IN_REVIEW,
-              message: `Task "${task.title}" is ready for review.`,
+              projectId: task.projectId,
+              taskId: task.id,
+              userId: requestUser.userId,
+              oldStatus,
+              newStatus,
             },
           });
-        }
-      }
 
-      return updatedTask;
+          if (newStatus === TaskStatus.IN_REVIEW) {
+            await tx.notification.create({
+              data: {
+                userId: task.project.createdById,
+                type: NotificationType.TASK_IN_REVIEW,
+                message: `Task "${task.title}" is ready for review.`,
+              },
+            });
+          }
+        }
+
+        return updatedTask;
+      });
     }
 
     // PM authorization check
-    if (requestUser.role === UserRole.PROJECT_MANAGER && task.project.createdById !== requestUser.userId) {
-      throw new AppError('Access denied: You cannot update tasks in another PM\'s project', 403);
+    if (
+      requestUser.role === UserRole.PROJECT_MANAGER &&
+      task.project.createdById !== requestUser.userId
+    ) {
+      throw new AppError(
+        "Access denied: You cannot update tasks in another PM's project",
+        403,
+      );
     }
 
     // Admin & PM full update
@@ -242,52 +297,61 @@ export class TaskService {
     const updateData: any = {};
 
     if (input.title !== undefined) updateData.title = input.title;
-    if (input.description !== undefined) updateData.description = input.description;
+    if (input.description !== undefined)
+      updateData.description = input.description;
     if (input.status !== undefined) updateData.status = input.status;
     if (input.priority !== undefined) updateData.priority = input.priority;
-    if (input.dueDate !== undefined) updateData.dueDate = input.dueDate ? new Date(input.dueDate) : null;
+    if (input.dueDate !== undefined)
+      updateData.dueDate = input.dueDate ? new Date(input.dueDate) : null;
     if (input.assignedDeveloperId !== undefined) {
       if (input.assignedDeveloperId) {
-        const dev = await prisma.user.findUnique({ where: { id: input.assignedDeveloperId } });
-        if (!dev) throw new AppError('Assigned developer not found', 404);
+        const dev = await prisma.user.findUnique({
+          where: { id: input.assignedDeveloperId },
+        });
+        if (!dev || dev.role !== UserRole.DEVELOPER) {
+          throw new AppError("Assigned user is not a developer", 400);
+        }
       }
       updateData.assignedDeveloperId = input.assignedDeveloperId;
     }
 
-    const updatedTask = await prisma.task.update({
-      where: { id: taskId },
-      data: updateData,
-      include: {
-        project: true,
-        assignedDeveloper: { select: { id: true, name: true, email: true } },
-      },
+    return prisma.$transaction(async (tx) => {
+      const updatedTask = await tx.task.update({
+        where: { id: taskId },
+        data: updateData,
+        include: {
+          project: true,
+          assignedDeveloper: { select: { id: true, name: true, email: true } },
+        },
+      });
+
+      if (input.status !== undefined && input.status !== oldStatus) {
+        await tx.activity.create({
+          data: {
+            projectId: task.projectId,
+            taskId: task.id,
+            userId: requestUser.userId,
+            oldStatus,
+            newStatus: input.status,
+          },
+        });
+      }
+
+      if (
+        input.assignedDeveloperId &&
+        input.assignedDeveloperId !== task.assignedDeveloperId
+      ) {
+        await tx.notification.create({
+          data: {
+            userId: input.assignedDeveloperId,
+            type: NotificationType.TASK_ASSIGNED,
+            message: `You have been assigned to task "${updatedTask.title}" in project "${task.project.name}"`,
+          },
+        });
+      }
+
+      return updatedTask;
     });
-
-    // Log activity if status changed
-    if (input.status && input.status !== oldStatus) {
-      await prisma.activity.create({
-        data: {
-          projectId: task.projectId,
-          taskId: task.id,
-          userId: requestUser.userId,
-          oldStatus,
-          newStatus: input.status,
-        },
-      });
-    }
-
-    // Notify newly assigned developer
-    if (input.assignedDeveloperId && input.assignedDeveloperId !== task.assignedDeveloperId) {
-      await prisma.notification.create({
-        data: {
-          userId: input.assignedDeveloperId,
-          type: NotificationType.TASK_ASSIGNED,
-          message: `You have been assigned to task "${updatedTask.title}" in project "${task.project.name}"`,
-        },
-      });
-    }
-
-    return updatedTask;
   }
 
   /**
@@ -298,7 +362,7 @@ export class TaskService {
    */
   async deleteTask(requestUser: AccessTokenPayload, taskId: string) {
     if (requestUser.role === UserRole.DEVELOPER) {
-      throw new AppError('Access denied: Developers cannot delete tasks', 403);
+      throw new AppError("Access denied: Developers cannot delete tasks", 403);
     }
 
     const task = await prisma.task.findUnique({
@@ -307,11 +371,17 @@ export class TaskService {
     });
 
     if (!task) {
-      throw new AppError('Task not found', 404);
+      throw new AppError("Task not found", 404);
     }
 
-    if (requestUser.role === UserRole.PROJECT_MANAGER && task.project.createdById !== requestUser.userId) {
-      throw new AppError('Access denied: You cannot delete tasks in another PM\'s project', 403);
+    if (
+      requestUser.role === UserRole.PROJECT_MANAGER &&
+      task.project.createdById !== requestUser.userId
+    ) {
+      throw new AppError(
+        "Access denied: You cannot delete tasks in another PM's project",
+        403,
+      );
     }
 
     // Remove associated activity records

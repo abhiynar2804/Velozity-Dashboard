@@ -7,10 +7,13 @@ const auth_service_1 = require("../services/auth.service");
 class TaskController {
     async listTasks(req, res, next) {
         try {
-            const { projectId, status } = req.query;
+            const { projectId, status, priority, from, to } = req.query;
             const tasks = await task_service_1.taskService.listTasks(req.user, {
-                projectId: projectId,
-                status: status,
+                projectId,
+                status,
+                priority,
+                from,
+                to,
             });
             res.status(200).json(ApiResponse_1.ApiResponse.success('Tasks fetched successfully', tasks));
         }

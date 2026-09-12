@@ -149,6 +149,12 @@ class ProjectService {
         if (requestUser.role === client_1.UserRole.PROJECT_MANAGER && project.createdById !== requestUser.userId) {
             throw new auth_service_1.AppError('Access denied: You cannot update projects managed by other Project Managers', 403);
         }
+        if (input.clientId !== undefined) {
+            const client = await prisma_1.default.client.findUnique({ where: { id: input.clientId } });
+            if (!client) {
+                throw new auth_service_1.AppError('Client not found', 404);
+            }
+        }
         return prisma_1.default.project.update({
             where: { id: projectId },
             data: {

@@ -28,6 +28,15 @@ class TaskService {
         if (query?.status) {
             whereClause.status = query.status;
         }
+        if (query?.priority) {
+            whereClause.priority = query.priority;
+        }
+        if (query?.from || query?.to) {
+            whereClause.dueDate = {
+                ...(query.from ? { gte: new Date(query.from) } : {}),
+                ...(query.to ? { lte: new Date(query.to) } : {}),
+            };
+        }
         return prisma_1.default.task.findMany({
             where: whereClause,
             include: {
@@ -60,8 +69,8 @@ class TaskService {
         }
         if (input.assignedDeveloperId) {
             const dev = await prisma_1.default.user.findUnique({ where: { id: input.assignedDeveloperId } });
-            if (!dev) {
-                throw new auth_service_1.AppError('Assigned developer not found', 404);
+            if (!dev || dev.role !== client_1.UserRole.DEVELOPER) {
+                throw new auth_service_1.AppError('Assigned user is not a developer', 400);
             }
         }
         const task = await prisma_1.default.task.create({
@@ -170,37 +179,37 @@ class TaskService {
             }
             const oldStatus = task.status;
             const newStatus = input.status;
-            const updatedTask = await prisma_1.default.task.update({
-                where: { id: taskId },
-                data: { status: newStatus },
-                include: {
-                    project: true,
-                    assignedDeveloper: { select: { id: true, name: true, email: true } },
-                },
-            });
-            // Log status transition activity
-            if (oldStatus !== newStatus) {
-                await prisma_1.default.activity.create({
-                    data: {
-                        projectId: task.projectId,
-                        taskId: task.id,
-                        userId: requestUser.userId,
-                        oldStatus,
-                        newStatus,
+            return prisma_1.default.$transaction(async (tx) => {
+                const updatedTask = await tx.task.update({
+                    where: { id: taskId },
+                    data: { status: newStatus },
+                    include: {
+                        project: true,
+                        assignedDeveloper: { select: { id: true, name: true, email: true } },
                     },
                 });
-                // Notify project manager if status is IN_REVIEW
-                if (newStatus === client_1.TaskStatus.IN_REVIEW) {
-                    await prisma_1.default.notification.create({
+                if (oldStatus !== newStatus) {
+                    await tx.activity.create({
                         data: {
-                            userId: task.project.createdById,
-                            type: client_1.NotificationType.TASK_IN_REVIEW,
-                            message: `Task "${task.title}" is ready for review.`,
+                            projectId: task.projectId,
+                            taskId: task.id,
+                            userId: requestUser.userId,
+                            oldStatus,
+                            newStatus,
                         },
                     });
+                    if (newStatus === client_1.TaskStatus.IN_REVIEW) {
+                        await tx.notification.create({
+                            data: {
+                                userId: task.project.createdById,
+                                type: client_1.NotificationType.TASK_IN_REVIEW,
+                                message: `Task "${task.title}" is ready for review.`,
+                            },
+                        });
+                    }
                 }
-            }
-            return updatedTask;
+                return updatedTask;
+            });
         }
         // PM authorization check
         if (requestUser.role === client_1.UserRole.PROJECT_MANAGER && task.project.createdById !== requestUser.userId) {
@@ -222,42 +231,43 @@ class TaskService {
         if (input.assignedDeveloperId !== undefined) {
             if (input.assignedDeveloperId) {
                 const dev = await prisma_1.default.user.findUnique({ where: { id: input.assignedDeveloperId } });
-                if (!dev)
-                    throw new auth_service_1.AppError('Assigned developer not found', 404);
+                if (!dev || dev.role !== client_1.UserRole.DEVELOPER) {
+                    throw new auth_service_1.AppError('Assigned user is not a developer', 400);
+                }
             }
             updateData.assignedDeveloperId = input.assignedDeveloperId;
         }
-        const updatedTask = await prisma_1.default.task.update({
-            where: { id: taskId },
-            data: updateData,
-            include: {
-                project: true,
-                assignedDeveloper: { select: { id: true, name: true, email: true } },
-            },
+        return prisma_1.default.$transaction(async (tx) => {
+            const updatedTask = await tx.task.update({
+                where: { id: taskId },
+                data: updateData,
+                include: {
+                    project: true,
+                    assignedDeveloper: { select: { id: true, name: true, email: true } },
+                },
+            });
+            if (input.status !== undefined && input.status !== oldStatus) {
+                await tx.activity.create({
+                    data: {
+                        projectId: task.projectId,
+                        taskId: task.id,
+                        userId: requestUser.userId,
+                        oldStatus,
+                        newStatus: input.status,
+                    },
+                });
+            }
+            if (input.assignedDeveloperId && input.assignedDeveloperId !== task.assignedDeveloperId) {
+                await tx.notification.create({
+                    data: {
+                        userId: input.assignedDeveloperId,
+                        type: client_1.NotificationType.TASK_ASSIGNED,
+                        message: `You have been assigned to task "${updatedTask.title}" in project "${task.project.name}"`,
+                    },
+                });
+            }
+            return updatedTask;
         });
-        // Log activity if status changed
-        if (input.status && input.status !== oldStatus) {
-            await prisma_1.default.activity.create({
-                data: {
-                    projectId: task.projectId,
-                    taskId: task.id,
-                    userId: requestUser.userId,
-                    oldStatus,
-                    newStatus: input.status,
-                },
-            });
-        }
-        // Notify newly assigned developer
-        if (input.assignedDeveloperId && input.assignedDeveloperId !== task.assignedDeveloperId) {
-            await prisma_1.default.notification.create({
-                data: {
-                    userId: input.assignedDeveloperId,
-                    type: client_1.NotificationType.TASK_ASSIGNED,
-                    message: `You have been assigned to task "${updatedTask.title}" in project "${task.project.name}"`,
-                },
-            });
-        }
-        return updatedTask;
     }
     /**
      * Delete task:
