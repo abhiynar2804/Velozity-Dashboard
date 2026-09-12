@@ -36,8 +36,8 @@ class ActivityService {
                 project: { select: { id: true, name: true } },
                 task: { select: { id: true, title: true } },
             },
-            orderBy: { createdAt: 'desc' },
-            take: 50,
+            orderBy: { createdAt: "desc" },
+            take: 20,
         });
     }
     /**
@@ -46,7 +46,7 @@ class ActivityService {
     async getNotifications(requestUser) {
         return prisma_1.default.notification.findMany({
             where: { userId: requestUser.userId },
-            orderBy: { createdAt: 'desc' },
+            orderBy: { createdAt: "desc" },
             take: 50,
         });
     }
@@ -58,10 +58,10 @@ class ActivityService {
             where: { id: notificationId },
         });
         if (!notification) {
-            throw new auth_service_1.AppError('Notification not found', 404);
+            throw new auth_service_1.AppError("Notification not found", 404);
         }
         if (notification.userId !== requestUser.userId) {
-            throw new auth_service_1.AppError('Access denied', 403);
+            throw new auth_service_1.AppError("Access denied", 403);
         }
         return prisma_1.default.notification.update({
             where: { id: notificationId },

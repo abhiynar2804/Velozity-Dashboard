@@ -4,6 +4,31 @@ exports.initializeSocket = void 0;
 const socket_io_1 = require("socket.io");
 const socket_auth_1 = require("./socket.auth");
 const socket_authorization_1 = require("./socket.authorization");
+const connectedUsers = new Map();
+const serializePresenceUser = (user) => ({
+    userId: user.userId,
+    email: user.email,
+    role: user.role,
+    socketId: user.socketId,
+    projectIds: Array.from(user.projectIds),
+});
+const broadcastPresence = (io) => {
+    const users = Array.from(connectedUsers.values()).map(serializePresenceUser);
+    io.emit("presence:updated", {
+        onlineCount: users.length,
+        users,
+    });
+};
+const broadcastProjectPresence = (io, projectId) => {
+    const roomUsers = Array.from(connectedUsers.values())
+        .filter((user) => user.projectIds.has(projectId))
+        .map(serializePresenceUser);
+    io.to(`project:${projectId}`).emit("presence:project", {
+        projectId,
+        onlineCount: roomUsers.length,
+        users: roomUsers,
+    });
+};
 const initializeSocket = (httpServer) => {
     const io = new socket_io_1.Server(httpServer, {
         cors: {
@@ -14,10 +39,22 @@ const initializeSocket = (httpServer) => {
     io.use(socket_auth_1.socketAuthentication);
     io.on("connection", (socket) => {
         const authenticatedSocket = socket;
-        console.log(`🔌 User connected: ${authenticatedSocket.user?.userId}`);
+        const user = authenticatedSocket.user;
+        if (!user) {
+            socket.disconnect();
+            return;
+        }
+        connectedUsers.set(socket.id, {
+            userId: user.userId,
+            email: user.email,
+            role: user.role,
+            socketId: socket.id,
+            projectIds: new Set(),
+        });
+        console.log(`🔌 User connected: ${user.userId}`);
+        broadcastPresence(io);
         socket.on("project:join", async (projectId) => {
             try {
-                const user = authenticatedSocket.user;
                 if (!user) {
                     return;
                 }
@@ -30,10 +67,16 @@ const initializeSocket = (httpServer) => {
                     return;
                 }
                 socket.join(`project:${projectId}`);
+                const currentUser = connectedUsers.get(socket.id);
+                if (currentUser) {
+                    currentUser.projectIds.add(projectId);
+                }
                 socket.emit("project:joined", {
                     projectId,
                     message: "Joined project room",
                 });
+                broadcastProjectPresence(io, projectId);
+                broadcastPresence(io);
                 console.log(`User ${user.userId} joined project:${projectId}`);
             }
             catch (error) {
@@ -46,9 +89,23 @@ const initializeSocket = (httpServer) => {
         });
         socket.on("project:leave", (projectId) => {
             socket.leave(`project:${projectId}`);
+            const currentUser = connectedUsers.get(socket.id);
+            if (currentUser) {
+                currentUser.projectIds.delete(projectId);
+            }
+            broadcastProjectPresence(io, projectId);
+            broadcastPresence(io);
             console.log(`User ${authenticatedSocket.user?.userId} left project ${projectId}`);
         });
         socket.on("disconnect", () => {
+            const disconnectedUser = connectedUsers.get(socket.id);
+            connectedUsers.delete(socket.id);
+            if (disconnectedUser) {
+                for (const projectId of disconnectedUser.projectIds) {
+                    broadcastProjectPresence(io, projectId);
+                }
+            }
+            broadcastPresence(io);
             console.log(`🔌 User disconnected: ${socket.id}`);
         });
     });

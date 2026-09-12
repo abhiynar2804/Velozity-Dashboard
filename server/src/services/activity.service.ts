@@ -1,7 +1,7 @@
-import prisma from '../utils/prisma';
-import { UserRole } from '@prisma/client';
-import { AppError } from './auth.service';
-import { AccessTokenPayload } from '../utils/token.utils';
+import prisma from "../utils/prisma";
+import { UserRole } from "@prisma/client";
+import { AppError } from "./auth.service";
+import { AccessTokenPayload } from "../utils/token.utils";
 
 export class ActivityService {
   /**
@@ -34,8 +34,8 @@ export class ActivityService {
         project: { select: { id: true, name: true } },
         task: { select: { id: true, title: true } },
       },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
+      orderBy: { createdAt: "desc" },
+      take: 20,
     });
   }
 
@@ -45,7 +45,7 @@ export class ActivityService {
   async getNotifications(requestUser: AccessTokenPayload) {
     return prisma.notification.findMany({
       where: { userId: requestUser.userId },
-      orderBy: { createdAt: 'desc' },
+      orderBy: { createdAt: "desc" },
       take: 50,
     });
   }
@@ -53,17 +53,20 @@ export class ActivityService {
   /**
    * Mark notification as read
    */
-  async markNotificationRead(requestUser: AccessTokenPayload, notificationId: string) {
+  async markNotificationRead(
+    requestUser: AccessTokenPayload,
+    notificationId: string,
+  ) {
     const notification = await prisma.notification.findUnique({
       where: { id: notificationId },
     });
 
     if (!notification) {
-      throw new AppError('Notification not found', 404);
+      throw new AppError("Notification not found", 404);
     }
 
     if (notification.userId !== requestUser.userId) {
-      throw new AppError('Access denied', 403);
+      throw new AppError("Access denied", 403);
     }
 
     return prisma.notification.update({

@@ -23,6 +23,7 @@ const ApiResponse_1 = require("./utils/ApiResponse");
 const http_1 = require("http");
 const socket_server_1 = require("./socket/socket.server");
 const task_service_1 = require("./services/task.service");
+const overdue_scheduler_1 = require("./jobs/overdue.scheduler");
 exports.app = (0, express_1.default)();
 const port = process.env.PORT || 5000;
 // Security & Parsing Middleware
@@ -73,6 +74,7 @@ exports.app.use(error_middleware_1.errorHandler);
 const httpServer = (0, http_1.createServer)(exports.app);
 const io = (0, socket_server_1.initializeSocket)(httpServer);
 task_service_1.taskService.setSocketServer(io);
+(0, overdue_scheduler_1.startOverdueScheduler)();
 if (process.env.NODE_ENV !== "test") {
     httpServer.listen(port, () => {
         console.log(`🚀 Server is running at http://localhost:${port}`);

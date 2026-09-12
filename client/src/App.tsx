@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
-import { getAccessToken } from "./api/auth.api";
+import { authFetch, getAccessToken } from "./api/auth.api";
 import {
   connectSocket,
   disconnectSocket,
   joinProjectRoom,
   leaveProjectRoom,
   socket,
+  type PresencePayload,
+  type ProjectPresencePayload,
 } from "./services/socket";
 
 interface ActivityEvent {
@@ -23,6 +25,38 @@ export default function App() {
   const [joinedProject, setJoinedProject] = useState("");
   const [connectionState, setConnectionState] = useState("Disconnected");
   const [activities, setActivities] = useState<ActivityEvent[]>([]);
+  const [onlineCount, setOnlineCount] = useState(0);
+  const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
+  const [projectUsers, setProjectUsers] = useState<string[]>([]);
+
+  const fetchMissedActivities = async (nextProjectId: string) => {
+    try {
+      const response = await authFetch(
+        `/activities?projectId=${encodeURIComponent(nextProjectId)}`,
+      );
+      const nextActivities = Array.isArray(response?.data) ? response.data : [];
+
+      setActivities((current) => {
+        const mapped = new Map(
+          current.map((activity) => [activity.id, activity]),
+        );
+
+        nextActivities.forEach((activity: ActivityEvent) => {
+          mapped.set(activity.id, activity);
+        });
+
+        return [...mapped.values()]
+          .sort(
+            (left, right) =>
+              new Date(right.createdAt).getTime() -
+              new Date(left.createdAt).getTime(),
+          )
+          .slice(0, 20);
+      });
+    } catch (error) {
+      console.error("Failed to load missed activities:", error);
+    }
+  };
 
   useEffect(() => {
     const accessToken = getAccessToken();
@@ -31,7 +65,13 @@ export default function App() {
       return;
     }
 
-    const handleConnect = () => setConnectionState("Connected");
+    const handleConnect = () => {
+      setConnectionState("Connected");
+      if (joinedProject) {
+        joinProjectRoom(joinedProject);
+        void fetchMissedActivities(joinedProject);
+      }
+    };
     const handleDisconnect = () => setConnectionState("Disconnected");
     const handleConnectError = () =>
       setConnectionState("Authentication failed");
@@ -44,6 +84,18 @@ export default function App() {
       projectId: string;
     }) => {
       setJoinedProject(nextProjectId);
+      void fetchMissedActivities(nextProjectId);
+    };
+    const handlePresenceUpdated = (payload: PresencePayload) => {
+      setOnlineCount(payload.onlineCount);
+      setOnlineUsers(
+        payload.users.map((user) => user.email || user.userId).slice(0, 10),
+      );
+    };
+    const handleProjectPresence = (payload: ProjectPresencePayload) => {
+      setProjectUsers(
+        payload.users.map((user) => user.email || user.userId).slice(0, 10),
+      );
     };
 
     socket.on("connect", handleConnect);
@@ -51,6 +103,8 @@ export default function App() {
     socket.on("connect_error", handleConnectError);
     socket.on("activity:created", handleActivity);
     socket.on("project:joined", handleJoined);
+    socket.on("presence:updated", handlePresenceUpdated);
+    socket.on("presence:project", handleProjectPresence);
     connectSocket(accessToken);
 
     return () => {
@@ -59,19 +113,26 @@ export default function App() {
       socket.off("connect_error", handleConnectError);
       socket.off("activity:created", handleActivity);
       socket.off("project:joined", handleJoined);
+      socket.off("presence:updated", handlePresenceUpdated);
+      socket.off("presence:project", handleProjectPresence);
       disconnectSocket();
     };
-  }, []);
+  }, [joinedProject]);
 
   const handleJoin = () => {
     const nextProjectId = projectId.trim();
-    if (nextProjectId) joinProjectRoom(nextProjectId);
+    if (nextProjectId) {
+      setJoinedProject(nextProjectId);
+      joinProjectRoom(nextProjectId);
+      void fetchMissedActivities(nextProjectId);
+    }
   };
 
   const handleLeave = () => {
     if (!joinedProject) return;
     leaveProjectRoom(joinedProject);
     setJoinedProject("");
+    setProjectUsers([]);
   };
 
   return (
@@ -79,6 +140,10 @@ export default function App() {
       <p className="eyebrow">VELOZITY / LIVE EVENTS</p>
       <h1>Project activity stream</h1>
       <p className="status">Socket status: {connectionState}</p>
+      <p className="status">Online users: {onlineCount}</p>
+      <p className="status">
+        Active now: {onlineUsers.length > 0 ? onlineUsers.join(", ") : "No one"}
+      </p>
       <section className="room-controls" aria-label="Project room controls">
         <input
           value={projectId}
@@ -102,6 +167,12 @@ export default function App() {
           ? `Watching project ${joinedProject}`
           : "No project room joined"}
       </p>
+      {joinedProject && (
+        <p className="status">
+          Project online:{" "}
+          {projectUsers.length > 0 ? projectUsers.join(", ") : "No one"}
+        </p>
+      )}
       <section className="activity-list" aria-live="polite">
         {activities.length === 0 ? (
           <p className="empty">Waiting for activity events...</p>

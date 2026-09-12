@@ -16,6 +16,7 @@ import { ApiResponse } from "./utils/ApiResponse";
 import { createServer } from "http";
 import { initializeSocket } from "./socket/socket.server";
 import { taskService } from "./services/task.service";
+import { startOverdueScheduler } from "./jobs/overdue.scheduler";
 
 export const app: Express = express();
 const port = process.env.PORT || 5000;
@@ -82,6 +83,7 @@ const httpServer = createServer(app);
 
 const io = initializeSocket(httpServer);
 taskService.setSocketServer(io);
+startOverdueScheduler();
 
 if (process.env.NODE_ENV !== "test") {
   httpServer.listen(port, () => {
