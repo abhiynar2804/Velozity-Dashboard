@@ -17,9 +17,9 @@ const requiredEnv = (name, minimumLength) => {
     return value;
 };
 exports.env = {
-    databaseUrl: requiredEnv('DATABASE_URL'),
-    jwtAccessSecret: requiredEnv('JWT_ACCESS_SECRET', 32),
-    jwtRefreshSecret: requiredEnv('JWT_REFRESH_SECRET', 32),
-    jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN?.trim() || '15m',
-    jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN?.trim() || '7d',
+    databaseUrl: requiredEnv("DATABASE_URL"),
+    jwtAccessSecret: requiredEnv("JWT_ACCESS_SECRET", 32),
+    jwtRefreshSecret: requiredEnv("JWT_REFRESH_SECRET", 32),
+    jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN?.trim() || "15m",
+    jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN?.trim() || "7d",
 };

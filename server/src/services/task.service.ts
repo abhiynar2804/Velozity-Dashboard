@@ -8,8 +8,16 @@ import {
 import { AppError } from "./auth.service";
 import { CreateTaskInput, UpdateTaskInput } from "../validators/task.validator";
 import { AccessTokenPayload } from "../utils/token.utils";
+import { Server } from "socket.io";
+import { emitActivity } from "../socket/socket.events";
 
 export class TaskService {
+  private io?: Server;
+
+  setSocketServer(io: Server): void {
+    this.io = io;
+  }
+
   /**
    * List tasks with strict data isolation:
    * - Admin: all tasks
@@ -242,8 +250,9 @@ export class TaskService {
 
       const oldStatus = task.status;
       const newStatus = input.status;
+      let activityToEmit;
 
-      return prisma.$transaction(async (tx) => {
+      const updatedTask = await prisma.$transaction(async (tx) => {
         const updatedTask = await tx.task.update({
           where: { id: taskId },
           data: { status: newStatus },
@@ -256,7 +265,7 @@ export class TaskService {
         });
 
         if (oldStatus !== newStatus) {
-          await tx.activity.create({
+          activityToEmit = await tx.activity.create({
             data: {
               projectId: task.projectId,
               taskId: task.id,
@@ -279,6 +288,12 @@ export class TaskService {
 
         return updatedTask;
       });
+
+      if (activityToEmit && this.io) {
+        emitActivity(this.io, activityToEmit);
+      }
+
+      return updatedTask;
     }
 
     // PM authorization check
@@ -295,6 +310,7 @@ export class TaskService {
     // Admin & PM full update
     const oldStatus = task.status;
     const updateData: any = {};
+    let activityToEmit;
 
     if (input.title !== undefined) updateData.title = input.title;
     if (input.description !== undefined)
@@ -315,7 +331,7 @@ export class TaskService {
       updateData.assignedDeveloperId = input.assignedDeveloperId;
     }
 
-    return prisma.$transaction(async (tx) => {
+    const updatedTask = await prisma.$transaction(async (tx) => {
       const updatedTask = await tx.task.update({
         where: { id: taskId },
         data: updateData,
@@ -326,7 +342,7 @@ export class TaskService {
       });
 
       if (input.status !== undefined && input.status !== oldStatus) {
-        await tx.activity.create({
+        activityToEmit = await tx.activity.create({
           data: {
             projectId: task.projectId,
             taskId: task.id,
@@ -352,6 +368,13 @@ export class TaskService {
 
       return updatedTask;
     });
+
+    const io = this.io;
+    if (activityToEmit && io) {
+      emitActivity(io, activityToEmit);
+    }
+
+    return updatedTask;
   }
 
   /**

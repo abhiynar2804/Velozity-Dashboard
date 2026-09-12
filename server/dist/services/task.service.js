@@ -7,7 +7,12 @@ exports.taskService = exports.TaskService = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const client_1 = require("@prisma/client");
 const auth_service_1 = require("./auth.service");
+const socket_events_1 = require("../socket/socket.events");
 class TaskService {
+    io;
+    setSocketServer(io) {
+        this.io = io;
+    }
     /**
      * List tasks with strict data isolation:
      * - Admin: all tasks
@@ -184,7 +189,8 @@ class TaskService {
             }
             const oldStatus = task.status;
             const newStatus = input.status;
-            return prisma_1.default.$transaction(async (tx) => {
+            let activityToEmit;
+            const updatedTask = await prisma_1.default.$transaction(async (tx) => {
                 const updatedTask = await tx.task.update({
                     where: { id: taskId },
                     data: { status: newStatus },
@@ -196,7 +202,7 @@ class TaskService {
                     },
                 });
                 if (oldStatus !== newStatus) {
-                    await tx.activity.create({
+                    activityToEmit = await tx.activity.create({
                         data: {
                             projectId: task.projectId,
                             taskId: task.id,
@@ -217,6 +223,10 @@ class TaskService {
                 }
                 return updatedTask;
             });
+            if (activityToEmit && this.io) {
+                (0, socket_events_1.emitActivity)(this.io, activityToEmit);
+            }
+            return updatedTask;
         }
         // PM authorization check
         if (requestUser.role === client_1.UserRole.PROJECT_MANAGER &&
@@ -226,6 +236,7 @@ class TaskService {
         // Admin & PM full update
         const oldStatus = task.status;
         const updateData = {};
+        let activityToEmit;
         if (input.title !== undefined)
             updateData.title = input.title;
         if (input.description !== undefined)
@@ -247,7 +258,7 @@ class TaskService {
             }
             updateData.assignedDeveloperId = input.assignedDeveloperId;
         }
-        return prisma_1.default.$transaction(async (tx) => {
+        const updatedTask = await prisma_1.default.$transaction(async (tx) => {
             const updatedTask = await tx.task.update({
                 where: { id: taskId },
                 data: updateData,
@@ -257,7 +268,7 @@ class TaskService {
                 },
             });
             if (input.status !== undefined && input.status !== oldStatus) {
-                await tx.activity.create({
+                activityToEmit = await tx.activity.create({
                     data: {
                         projectId: task.projectId,
                         taskId: task.id,
@@ -279,6 +290,11 @@ class TaskService {
             }
             return updatedTask;
         });
+        const io = this.io;
+        if (activityToEmit && io) {
+            (0, socket_events_1.emitActivity)(io, activityToEmit);
+        }
+        return updatedTask;
     }
     /**
      * Delete task:

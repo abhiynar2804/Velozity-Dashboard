@@ -13,6 +13,9 @@ import activityRoutes from "./routes/activity.routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { errorHandler } from "./middleware/error.middleware";
 import { ApiResponse } from "./utils/ApiResponse";
+import { createServer } from "http";
+import { initializeSocket } from "./socket/socket.server";
+import { taskService } from "./services/task.service";
 
 export const app: Express = express();
 const port = process.env.PORT || 5000;
@@ -75,8 +78,13 @@ app.get("/api/protected", authenticate, (req: Request, res: Response) => {
 app.use(errorHandler);
 
 // Start server if not imported by test
+const httpServer = createServer(app);
+
+const io = initializeSocket(httpServer);
+taskService.setSocketServer(io);
+
 if (process.env.NODE_ENV !== "test") {
-  app.listen(port, () => {
+  httpServer.listen(port, () => {
     console.log(`🚀 Server is running at http://localhost:${port}`);
   });
 }

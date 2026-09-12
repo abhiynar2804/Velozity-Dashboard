@@ -34,6 +34,6 @@ const verifyRefreshToken = (token) => {
 };
 exports.verifyRefreshToken = verifyRefreshToken;
 const hashToken = (token) => {
-    return crypto_1.default.createHash('sha256').update(token).digest('hex');
+    return crypto_1.default.createHash("sha256").update(token).digest("hex");
 };
 exports.hashToken = hashToken;
