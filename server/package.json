@@ -13,7 +13,7 @@
     "test:socket-security": "tsc && node dist/test-socket-activity-security.js",
     "test:presence": "tsc && node dist/test-presence-aggregation.js",
     "test:overdue": "tsc && node dist/test-overdue-job.js",
-    "test:all": "tsc && node dist/test-auth-flow.js && node dist/test-rbac-security.js && node dist/test-overdue-job.js"
+    "test:all": "tsc && node dist/test-auth-flow.js && node dist/test-rbac-security.js && node dist/test-socket-activity-security.js && node dist/test-presence-aggregation.js && node dist/test-overdue-job.js"
   },
   "keywords": [],
   "author": "",

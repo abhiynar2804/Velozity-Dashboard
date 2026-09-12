@@ -1,3 +1,5 @@
+import { setSocketAuthToken } from "../services/socket";
+
 export interface User {
   id: string;
   name: string;
@@ -23,6 +25,7 @@ let currentAccessToken: string | null = null;
 
 export const setAccessToken = (token: string | null) => {
   currentAccessToken = token;
+  setSocketAuthToken(token);
 };
 
 export const getAccessToken = () => currentAccessToken;

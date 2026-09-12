@@ -16,9 +16,6 @@ export const checkOverdueTasks = async () => {
     },
     select: {
       id: true,
-      title: true,
-      projectId: true,
-      assignedDeveloperId: true,
     },
   });
 
@@ -32,18 +29,6 @@ export const checkOverdueTasks = async () => {
     where: { id: { in: overdueIds } },
     data: { isOverdue: true },
   });
-
-  for (const task of overdueTasks) {
-    if (task.assignedDeveloperId) {
-      await prisma.notification.create({
-        data: {
-          userId: task.assignedDeveloperId,
-          type: "TASK_IN_REVIEW",
-          message: `Task "${task.title}" is overdue. Please review it immediately.`,
-        },
-      });
-    }
-  }
 
   console.log(`🕒 Marked ${overdueTasks.length} tasks as overdue`);
   return overdueTasks.length;

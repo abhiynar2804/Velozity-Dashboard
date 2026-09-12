@@ -43,9 +43,7 @@ if (process.env.NODE_ENV !== "test") {
 exports.app.get("/health", async (req, res) => {
     try {
         await prisma_1.default.$queryRaw `SELECT 1`;
-        res
-            .status(200)
-            .json(ApiResponse_1.ApiResponse.success("Server is healthy and DB is connected", {
+        res.status(200).json(ApiResponse_1.ApiResponse.success("Server is healthy and DB is connected", {
             status: "ok",
         }));
     }
