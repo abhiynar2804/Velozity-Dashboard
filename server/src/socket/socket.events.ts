@@ -20,7 +20,11 @@ export interface ActivityEvent {
 }
 
 export const emitActivity = (io: Server, activity: ActivityEvent) => {
-  io.to(`project:${activity.projectId}`).emit("activity:created", activity);
+  io.to(`project:${activity.projectId}:staff`).emit(
+    "activity:created",
+    activity,
+  );
+  io.to(`task:${activity.taskId}`).emit("activity:created", activity);
 };
 
 export const emitNotification = (

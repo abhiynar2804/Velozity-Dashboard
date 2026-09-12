@@ -22,4 +22,8 @@ exports.env = {
     jwtRefreshSecret: requiredEnv("JWT_REFRESH_SECRET", 32),
     jwtAccessExpiresIn: process.env.JWT_ACCESS_EXPIRES_IN?.trim() || "15m",
     jwtRefreshExpiresIn: process.env.JWT_REFRESH_EXPIRES_IN?.trim() || "7d",
+    clientUrl: process.env.CLIENT_URL?.trim() ||
+        (process.env.NODE_ENV === "production"
+            ? requiredEnv("CLIENT_URL")
+            : "http://localhost:5173"),
 };

@@ -68,6 +68,18 @@ class ActivityService {
             data: { read: true },
         });
     }
+    /**
+     * Mark every unread notification belonging to the authenticated user as read.
+     */
+    async markAllNotificationsRead(requestUser) {
+        return prisma_1.default.notification.updateMany({
+            where: {
+                userId: requestUser.userId,
+                read: false,
+            },
+            data: { read: true },
+        });
+    }
 }
 exports.ActivityService = ActivityService;
 exports.activityService = new ActivityService();

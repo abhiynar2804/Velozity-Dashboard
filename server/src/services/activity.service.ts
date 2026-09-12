@@ -74,6 +74,19 @@ export class ActivityService {
       data: { read: true },
     });
   }
+
+  /**
+   * Mark every unread notification belonging to the authenticated user as read.
+   */
+  async markAllNotificationsRead(requestUser: AccessTokenPayload) {
+    return prisma.notification.updateMany({
+      where: {
+        userId: requestUser.userId,
+        read: false,
+      },
+      data: { read: true },
+    });
+  }
 }
 
 export const activityService = new ActivityService();

@@ -2,7 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.emitNotification = exports.emitActivity = void 0;
 const emitActivity = (io, activity) => {
-    io.to(`project:${activity.projectId}`).emit("activity:created", activity);
+    io.to(`project:${activity.projectId}:staff`).emit("activity:created", activity);
+    io.to(`task:${activity.taskId}`).emit("activity:created", activity);
 };
 exports.emitActivity = emitActivity;
 const emitNotification = (io, notification) => {

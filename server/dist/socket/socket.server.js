@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.initializeSocket = void 0;
+exports.initializeSocket = exports.aggregatePresenceUsers = void 0;
 const socket_io_1 = require("socket.io");
 const socket_auth_1 = require("./socket.auth");
 const socket_authorization_1 = require("./socket.authorization");
+const env_1 = require("../config/env");
 const connectedUsers = new Map();
 const serializePresenceUser = (user) => ({
     userId: user.userId,
@@ -12,17 +13,34 @@ const serializePresenceUser = (user) => ({
     socketId: user.socketId,
     projectIds: Array.from(user.projectIds),
 });
+const aggregatePresenceUsers = (users) => {
+    const usersById = new Map();
+    for (const user of users) {
+        const existingUser = usersById.get(user.userId);
+        if (!existingUser) {
+            usersById.set(user.userId, {
+                ...user,
+                projectIds: new Set(user.projectIds),
+                projectTaskIds: new Map(user.projectTaskIds),
+            });
+            continue;
+        }
+        user.projectIds.forEach((projectId) => {
+            existingUser.projectIds.add(projectId);
+        });
+    }
+    return Array.from(usersById.values()).map(serializePresenceUser);
+};
+exports.aggregatePresenceUsers = aggregatePresenceUsers;
 const broadcastPresence = (io) => {
-    const users = Array.from(connectedUsers.values()).map(serializePresenceUser);
+    const users = (0, exports.aggregatePresenceUsers)(connectedUsers.values());
     io.emit("presence:updated", {
         onlineCount: users.length,
         users,
     });
 };
 const broadcastProjectPresence = (io, projectId) => {
-    const roomUsers = Array.from(connectedUsers.values())
-        .filter((user) => user.projectIds.has(projectId))
-        .map(serializePresenceUser);
+    const roomUsers = (0, exports.aggregatePresenceUsers)(Array.from(connectedUsers.values()).filter((user) => user.projectIds.has(projectId)));
     io.to(`project:${projectId}`).emit("presence:project", {
         projectId,
         onlineCount: roomUsers.length,
@@ -32,7 +50,7 @@ const broadcastProjectPresence = (io, projectId) => {
 const initializeSocket = (httpServer) => {
     const io = new socket_io_1.Server(httpServer, {
         cors: {
-            origin: process.env.CLIENT_URL || "http://localhost:5173",
+            origin: env_1.env.clientUrl,
             credentials: true,
         },
     });
@@ -50,6 +68,7 @@ const initializeSocket = (httpServer) => {
             role: user.role,
             socketId: socket.id,
             projectIds: new Set(),
+            projectTaskIds: new Map(),
         });
         socket.join(`user:${user.userId}`);
         console.log(`🔌 User connected: ${user.userId}`);
@@ -68,6 +87,15 @@ const initializeSocket = (httpServer) => {
                     return;
                 }
                 socket.join(`project:${projectId}`);
+                if (user.role === "ADMIN" || user.role === "PROJECT_MANAGER") {
+                    socket.join(`project:${projectId}:staff`);
+                }
+                else if (user.role === "DEVELOPER") {
+                    const taskIds = await (0, socket_authorization_1.getDeveloperProjectTaskIds)(user.userId, projectId);
+                    taskIds.forEach((taskId) => socket.join(`task:${taskId}`));
+                    const currentUser = connectedUsers.get(socket.id);
+                    currentUser?.projectTaskIds.set(projectId, new Set(taskIds));
+                }
                 const currentUser = connectedUsers.get(socket.id);
                 if (currentUser) {
                     currentUser.projectIds.add(projectId);
@@ -90,9 +118,14 @@ const initializeSocket = (httpServer) => {
         });
         socket.on("project:leave", (projectId) => {
             socket.leave(`project:${projectId}`);
+            socket.leave(`project:${projectId}:staff`);
             const currentUser = connectedUsers.get(socket.id);
             if (currentUser) {
                 currentUser.projectIds.delete(projectId);
+                currentUser.projectTaskIds.get(projectId)?.forEach((taskId) => {
+                    socket.leave(`task:${taskId}`);
+                });
+                currentUser.projectTaskIds.delete(projectId);
             }
             broadcastProjectPresence(io, projectId);
             broadcastPresence(io);

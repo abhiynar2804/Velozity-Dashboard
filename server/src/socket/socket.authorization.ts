@@ -3,7 +3,7 @@ import prisma from "../utils/prisma";
 export const canAccessProject = async (
   userId: string,
   role: string,
-  projectId: string
+  projectId: string,
 ): Promise<boolean> => {
   // ADMIN can access everything
   if (role === "ADMIN") {
@@ -42,4 +42,19 @@ export const canAccessProject = async (
   }
 
   return false;
+};
+
+export const getDeveloperProjectTaskIds = async (
+  userId: string,
+  projectId: string,
+): Promise<string[]> => {
+  const tasks = await prisma.task.findMany({
+    where: {
+      projectId,
+      assignedDeveloperId: userId,
+    },
+    select: { id: true },
+  });
+
+  return tasks.map((task) => task.id);
 };

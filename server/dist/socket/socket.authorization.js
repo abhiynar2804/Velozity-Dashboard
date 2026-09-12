@@ -3,7 +3,7 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
     return (mod && mod.__esModule) ? mod : { "default": mod };
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.canAccessProject = void 0;
+exports.getDeveloperProjectTaskIds = exports.canAccessProject = void 0;
 const prisma_1 = __importDefault(require("../utils/prisma"));
 const canAccessProject = async (userId, role, projectId) => {
     // ADMIN can access everything
@@ -40,3 +40,14 @@ const canAccessProject = async (userId, role, projectId) => {
     return false;
 };
 exports.canAccessProject = canAccessProject;
+const getDeveloperProjectTaskIds = async (userId, projectId) => {
+    const tasks = await prisma_1.default.task.findMany({
+        where: {
+            projectId,
+            assignedDeveloperId: userId,
+        },
+        select: { id: true },
+    });
+    return tasks.map((task) => task.id);
+};
+exports.getDeveloperProjectTaskIds = getDeveloperProjectTaskIds;

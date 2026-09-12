@@ -24,12 +24,13 @@ const http_1 = require("http");
 const socket_server_1 = require("./socket/socket.server");
 const task_service_1 = require("./services/task.service");
 const overdue_scheduler_1 = require("./jobs/overdue.scheduler");
+const env_1 = require("./config/env");
 exports.app = (0, express_1.default)();
 const port = process.env.PORT || 5000;
 // Security & Parsing Middleware
 exports.app.use((0, helmet_1.default)());
 exports.app.use((0, cors_1.default)({
-    origin: process.env.CLIENT_URL || true, // Allow frontend origin
+    origin: env_1.env.clientUrl,
     credentials: true, // Allow cookies across origins
 }));
 exports.app.use((0, cookie_parser_1.default)());

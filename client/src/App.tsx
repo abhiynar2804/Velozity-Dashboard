@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { authApi, authFetch, getAccessToken, type User } from "./api/auth.api";
 import {
   connectSocket,
@@ -26,7 +26,15 @@ interface Task {
 interface Project {
   id: string;
   name: string;
+  description?: string | null;
+  clientId?: string;
   _count?: { tasks: number };
+}
+
+interface Client {
+  id: string;
+  name: string;
+  company?: string | null;
 }
 
 interface Activity {
@@ -46,6 +54,8 @@ interface DashboardData {
   tasks: Task[];
   activities: Activity[];
   notifications: NotificationEvent[];
+  clients: Client[];
+  developers: User[];
 }
 
 const emptyData: DashboardData = {
@@ -53,6 +63,8 @@ const emptyData: DashboardData = {
   tasks: [],
   activities: [],
   notifications: [],
+  clients: [],
+  developers: [],
 };
 const statusLabels: Record<TaskStatus, string> = {
   TODO: "To do",
@@ -80,6 +92,23 @@ const countBy = <T,>(items: T[], getKey: (item: T) => string) =>
     counts[key] = (counts[key] || 0) + 1;
     return counts;
   }, {});
+
+const mergeActivities = (
+  current: Activity[],
+  incoming: Activity[],
+): Activity[] => {
+  const activitiesById = new Map(
+    [...current, ...incoming].map((activity) => [activity.id, activity]),
+  );
+
+  return [...activitiesById.values()]
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() -
+        new Date(left.createdAt).getTime(),
+    )
+    .slice(0, 20);
+};
 
 function Login({ onLogin }: { onLogin: (user: User) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -267,6 +296,294 @@ function ActivityList({ activities }: { activities: Activity[] }) {
         </article>
       ))}
     </div>
+  );
+}
+
+function NotificationPanel({
+  notifications,
+  onMarkRead,
+  onMarkAllRead,
+}: {
+  notifications: NotificationEvent[];
+  onMarkRead: (notificationId: string) => void;
+  onMarkAllRead: () => void;
+}) {
+  const unreadCount = notifications.filter(
+    (notification) => !notification.read,
+  ).length;
+
+  return (
+    <section
+      className="notification-panel"
+      aria-labelledby="notifications-title"
+    >
+      <div className="section-heading">
+        <div className="notification-title">
+          <h2 id="notifications-title">Notifications</h2>
+          <span className="notification-count">{unreadCount} unread</span>
+        </div>
+        <button
+          type="button"
+          className="button-quiet"
+          onClick={onMarkAllRead}
+          disabled={unreadCount === 0}
+        >
+          Mark all as read
+        </button>
+      </div>
+      {notifications.length === 0 ? (
+        <p className="empty">You are all caught up.</p>
+      ) : (
+        <div className="notification-list">
+          {notifications.map((notification) => (
+            <article
+              className={`notification-row${notification.read ? " notification-read" : ""}`}
+              key={notification.id}
+            >
+              <span className="notification-dot" aria-hidden="true" />
+              <div className="notification-content">
+                <strong>{notification.type.replaceAll("_", " ")}</strong>
+                <p>{notification.message}</p>
+                <time dateTime={notification.createdAt}>
+                  {formatDate(notification.createdAt)}
+                </time>
+              </div>
+              {!notification.read && (
+                <button
+                  type="button"
+                  className="notification-read-button"
+                  onClick={() => onMarkRead(notification.id)}
+                >
+                  Mark read
+                </button>
+              )}
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ManagementPanel({
+  projects,
+  clients,
+  developers,
+  onCreated,
+}: {
+  projects: Project[];
+  clients: Client[];
+  developers: User[];
+  onCreated: () => Promise<void>;
+}) {
+  const [projectName, setProjectName] = useState("");
+  const [projectDescription, setProjectDescription] = useState("");
+  const [projectClientId, setProjectClientId] = useState("");
+  const [taskTitle, setTaskTitle] = useState("");
+  const [taskProjectId, setTaskProjectId] = useState("");
+  const [taskPriority, setTaskPriority] = useState<TaskPriority>("MEDIUM");
+  const [taskDeveloperId, setTaskDeveloperId] = useState("");
+  const [taskDueDate, setTaskDueDate] = useState("");
+  const [saving, setSaving] = useState<"project" | "task" | "">("");
+  const [error, setError] = useState("");
+
+  const createProject = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving("project");
+    setError("");
+    try {
+      const response = await authFetch("/projects", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: projectName,
+          description: projectDescription || null,
+          clientId: projectClientId,
+        }),
+      });
+      if (!response?.success) {
+        setError(response?.message || "Could not create project");
+        return;
+      }
+      setProjectName("");
+      setProjectDescription("");
+      setProjectClientId("");
+      await onCreated();
+    } catch {
+      setError("Could not create project");
+    } finally {
+      setSaving("");
+    }
+  };
+
+  const createTask = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setSaving("task");
+    setError("");
+    try {
+      const response = await authFetch("/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: taskTitle,
+          projectId: taskProjectId,
+          priority: taskPriority,
+          assignedDeveloperId: taskDeveloperId || null,
+          dueDate: taskDueDate
+            ? new Date(`${taskDueDate}T23:59:59`).toISOString()
+            : null,
+        }),
+      });
+      if (!response?.success) {
+        setError(response?.message || "Could not create task");
+        return;
+      }
+      setTaskTitle("");
+      setTaskProjectId("");
+      setTaskPriority("MEDIUM");
+      setTaskDeveloperId("");
+      setTaskDueDate("");
+      await onCreated();
+    } catch {
+      setError("Could not create task");
+    } finally {
+      setSaving("");
+    }
+  };
+
+  return (
+    <section className="management-section">
+      <div className="section-heading">
+        <div>
+          <h2>Management</h2>
+          <p className="section-subtitle">
+            Create projects and assign work to developers.
+          </p>
+        </div>
+      </div>
+      {error && <p className="form-error">{error}</p>}
+      <div className="management-grid">
+        <form className="panel management-form" onSubmit={createProject}>
+          <h3>New project</h3>
+          <label>
+            Project name
+            <input
+              value={projectName}
+              onChange={(event) => setProjectName(event.target.value)}
+              required
+              minLength={2}
+            />
+          </label>
+          <label>
+            Client
+            <select
+              value={projectClientId}
+              onChange={(event) => setProjectClientId(event.target.value)}
+              required
+            >
+              <option value="">Select a client</option>
+              {clients.map((client) => (
+                <option value={client.id} key={client.id}>
+                  {client.name}
+                  {client.company ? ` · ${client.company}` : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            Description
+            <textarea
+              value={projectDescription}
+              onChange={(event) => setProjectDescription(event.target.value)}
+              rows={3}
+            />
+          </label>
+          <button
+            type="submit"
+            disabled={saving !== "" || clients.length === 0}
+          >
+            {saving === "project" ? "Creating..." : "Create project"}
+          </button>
+          {clients.length === 0 && (
+            <p className="form-hint">
+              An Admin must create a client before a project can be added.
+            </p>
+          )}
+        </form>
+        <form className="panel management-form" onSubmit={createTask}>
+          <h3>New task</h3>
+          <label>
+            Task title
+            <input
+              value={taskTitle}
+              onChange={(event) => setTaskTitle(event.target.value)}
+              required
+              minLength={2}
+            />
+          </label>
+          <label>
+            Project
+            <select
+              value={taskProjectId}
+              onChange={(event) => setTaskProjectId(event.target.value)}
+              required
+            >
+              <option value="">Select a project</option>
+              {projects.map((project) => (
+                <option value={project.id} key={project.id}>
+                  {project.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="form-row">
+            <label>
+              Priority
+              <select
+                value={taskPriority}
+                onChange={(event) =>
+                  setTaskPriority(event.target.value as TaskPriority)
+                }
+              >
+                {Object.entries(priorityLabels).map(([value, label]) => (
+                  <option value={value} key={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Due date
+              <input
+                type="date"
+                value={taskDueDate}
+                onChange={(event) => setTaskDueDate(event.target.value)}
+              />
+            </label>
+          </div>
+          <label>
+            Assign developer
+            <select
+              value={taskDeveloperId}
+              onChange={(event) => setTaskDeveloperId(event.target.value)}
+            >
+              <option value="">Unassigned</option>
+              {developers.map((developer) => (
+                <option value={developer.id} key={developer.id}>
+                  {developer.name} · {developer.email}
+                </option>
+              ))}
+            </select>
+          </label>
+          <button
+            type="submit"
+            disabled={saving !== "" || projects.length === 0}
+          >
+            {saving === "task" ? "Creating..." : "Create and assign task"}
+          </button>
+        </form>
+      </div>
+    </section>
   );
 }
 
@@ -472,6 +789,7 @@ export default function App() {
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const projectIdsRef = useRef<string[]>([]);
 
   const loadDashboard = async () => {
     const [
@@ -479,24 +797,37 @@ export default function App() {
       tasksResponse,
       activitiesResponse,
       notificationsResponse,
+      managementResponses,
     ] = await Promise.all([
       authFetch("/projects"),
       authFetch("/tasks"),
       authFetch("/activities"),
       authFetch("/activities/notifications"),
+      user?.role === "DEVELOPER"
+        ? Promise.resolve([null, null] as const)
+        : Promise.all([authFetch("/clients"), authFetch("/users")]),
     ]);
-    setData({
+    setData((current) => ({
       projects: Array.isArray(projectsResponse?.data)
         ? projectsResponse.data
         : [],
       tasks: Array.isArray(tasksResponse?.data) ? tasksResponse.data : [],
-      activities: Array.isArray(activitiesResponse?.data)
-        ? activitiesResponse.data
-        : [],
+      activities: mergeActivities(
+        current.activities,
+        Array.isArray(activitiesResponse?.data) ? activitiesResponse.data : [],
+      ),
       notifications: Array.isArray(notificationsResponse?.data)
         ? notificationsResponse.data
         : [],
-    });
+      clients: Array.isArray(managementResponses[0]?.data)
+        ? managementResponses[0].data
+        : [],
+      developers: Array.isArray(managementResponses[1]?.data)
+        ? managementResponses[1].data.filter(
+            (candidate: User) => candidate.role === "DEVELOPER",
+          )
+        : [],
+    }));
   };
 
   useEffect(() => {
@@ -541,10 +872,7 @@ export default function App() {
     const handleActivity = (activity: Activity) =>
       setData((current) => ({
         ...current,
-        activities: [
-          activity,
-          ...current.activities.filter((item) => item.id !== activity.id),
-        ].slice(0, 20),
+        activities: mergeActivities(current.activities, [activity]),
       }));
     const handleNotification = (notification: NotificationEvent) =>
       setData((current) => ({
@@ -556,20 +884,44 @@ export default function App() {
           ),
         ].slice(0, 50),
       }));
+    const recoverActivityFeed = async () => {
+      try {
+        const response = await authFetch("/activities");
+        const recoveredActivities = Array.isArray(response?.data)
+          ? response.data
+          : [];
+
+        setData((current) => ({
+          ...current,
+          activities: mergeActivities(current.activities, recoveredActivities),
+        }));
+        projectIdsRef.current.forEach((projectId) =>
+          joinProjectRoom(projectId),
+        );
+      } catch {
+        setError("Activity feed recovery failed. Try reconnecting.");
+      }
+    };
+    const handleSocketConnect = () => {
+      void recoverActivityFeed();
+    };
     socket.on("presence:updated", handlePresence);
     socket.on("activity:created", handleActivity);
     socket.on("notification:created", handleNotification);
+    socket.on("connect", handleSocketConnect);
     connectSocket(getAccessToken()!);
     return () => {
       active = false;
       socket.off("presence:updated", handlePresence);
       socket.off("activity:created", handleActivity);
       socket.off("notification:created", handleNotification);
+      socket.off("connect", handleSocketConnect);
       disconnectSocket();
     };
   }, [user]);
 
   useEffect(() => {
+    projectIdsRef.current = data.projects.map((project) => project.id);
     data.projects.forEach((project) => joinProjectRoom(project.id));
   }, [data.projects]);
 
@@ -586,6 +938,38 @@ export default function App() {
           task.id === taskId ? { ...task, status } : task,
         ),
       }));
+  };
+  const markNotificationRead = async (notificationId: string) => {
+    const response = await authFetch(
+      `/activities/notifications/${notificationId}/read`,
+      {
+        method: "PATCH",
+      },
+    );
+    if (response?.success) {
+      setData((current) => ({
+        ...current,
+        notifications: current.notifications.map((notification) =>
+          notification.id === notificationId
+            ? { ...notification, read: true }
+            : notification,
+        ),
+      }));
+    }
+  };
+  const markAllNotificationsRead = async () => {
+    const response = await authFetch("/activities/notifications/read-all", {
+      method: "PATCH",
+    });
+    if (response?.success) {
+      setData((current) => ({
+        ...current,
+        notifications: current.notifications.map((notification) => ({
+          ...notification,
+          read: true,
+        })),
+      }));
+    }
   };
   const title = useMemo(
     () => (user ? `Good to see you, ${user.name.split(" ")[0]}` : ""),
@@ -623,6 +1007,19 @@ export default function App() {
         <p className="online-line">Online: {onlineUsers.join(", ")}</p>
       )}
       {error && <p className="form-error">{error}</p>}
+      <NotificationPanel
+        notifications={data.notifications}
+        onMarkRead={markNotificationRead}
+        onMarkAllRead={markAllNotificationsRead}
+      />
+      {user.role !== "DEVELOPER" && (
+        <ManagementPanel
+          projects={data.projects}
+          clients={data.clients}
+          developers={data.developers}
+          onCreated={loadDashboard}
+        />
+      )}
       {loading ? (
         <p className="loading-copy">Refreshing dashboard...</p>
       ) : user.role === "ADMIN" ? (

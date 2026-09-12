@@ -26,7 +26,7 @@ class AuthService {
             where: { email: input.email.toLowerCase() },
         });
         if (existingUser) {
-            throw new AppError('Email is already registered', 409);
+            throw new AppError("Email is already registered", 409);
         }
         const passwordHash = await (0, password_utils_1.hashPassword)(input.password);
         const user = await prisma_1.default.user.create({
@@ -75,11 +75,11 @@ class AuthService {
             where: { email: input.email.toLowerCase() },
         });
         if (!user) {
-            throw new AppError('Invalid email or password', 401);
+            throw new AppError("Invalid email or password", 401);
         }
         const isPasswordValid = await (0, password_utils_1.comparePassword)(input.password, user.passwordHash);
         if (!isPasswordValid) {
-            throw new AppError('Invalid email or password', 401);
+            throw new AppError("Invalid email or password", 401);
         }
         const accessToken = (0, token_utils_1.generateAccessToken)({
             userId: user.id,
@@ -115,14 +115,14 @@ class AuthService {
      */
     async refresh(refreshTokenString) {
         if (!refreshTokenString) {
-            throw new AppError('Refresh token required', 401);
+            throw new AppError("Refresh token required", 401);
         }
         let payload;
         try {
             payload = (0, token_utils_1.verifyRefreshToken)(refreshTokenString);
         }
         catch (err) {
-            throw new AppError('Invalid or expired refresh token', 401);
+            throw new AppError("Invalid or expired refresh token", 401);
         }
         const incomingTokenHash = (0, token_utils_1.hashToken)(refreshTokenString);
         const storedToken = await prisma_1.default.refreshToken.findUnique({
@@ -130,7 +130,7 @@ class AuthService {
             include: { user: true },
         });
         if (!storedToken) {
-            throw new AppError('Refresh token not recognized or already used', 401);
+            throw new AppError("Refresh token not recognized or already used", 401);
         }
         if (storedToken.revokedAt) {
             // Possible token reuse attempt: invalidate all tokens for this user for security
@@ -138,10 +138,10 @@ class AuthService {
                 where: { userId: storedToken.userId, revokedAt: null },
                 data: { revokedAt: new Date() },
             });
-            throw new AppError('Refresh token has been revoked', 403);
+            throw new AppError("Refresh token has been revoked", 403);
         }
         if (new Date() > storedToken.expiresAt) {
-            throw new AppError('Refresh token has expired', 401);
+            throw new AppError("Refresh token has expired", 401);
         }
         // Invalidate old token (Rotation)
         await prisma_1.default.refreshToken.update({

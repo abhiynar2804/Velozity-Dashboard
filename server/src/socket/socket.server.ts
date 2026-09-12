@@ -1,14 +1,19 @@
 import { Server } from "socket.io";
 import { Server as HttpServer } from "http";
 import { AuthenticatedSocket, socketAuthentication } from "./socket.auth";
-import { canAccessProject } from "./socket.authorization";
+import {
+  canAccessProject,
+  getDeveloperProjectTaskIds,
+} from "./socket.authorization";
+import { env } from "../config/env";
 
-interface PresenceUser {
+export interface PresenceUser {
   userId: string;
   email: string;
   role: string;
   socketId: string;
   projectIds: Set<string>;
+  projectTaskIds: Map<string, Set<string>>;
 }
 
 const connectedUsers = new Map<string, PresenceUser>();
@@ -21,8 +26,30 @@ const serializePresenceUser = (user: PresenceUser) => ({
   projectIds: Array.from(user.projectIds),
 });
 
+export const aggregatePresenceUsers = (users: Iterable<PresenceUser>) => {
+  const usersById = new Map<string, PresenceUser>();
+
+  for (const user of users) {
+    const existingUser = usersById.get(user.userId);
+    if (!existingUser) {
+      usersById.set(user.userId, {
+        ...user,
+        projectIds: new Set(user.projectIds),
+        projectTaskIds: new Map(user.projectTaskIds),
+      });
+      continue;
+    }
+
+    user.projectIds.forEach((projectId) => {
+      existingUser.projectIds.add(projectId);
+    });
+  }
+
+  return Array.from(usersById.values()).map(serializePresenceUser);
+};
+
 const broadcastPresence = (io: Server) => {
-  const users = Array.from(connectedUsers.values()).map(serializePresenceUser);
+  const users = aggregatePresenceUsers(connectedUsers.values());
 
   io.emit("presence:updated", {
     onlineCount: users.length,
@@ -31,9 +58,11 @@ const broadcastPresence = (io: Server) => {
 };
 
 const broadcastProjectPresence = (io: Server, projectId: string) => {
-  const roomUsers = Array.from(connectedUsers.values())
-    .filter((user) => user.projectIds.has(projectId))
-    .map(serializePresenceUser);
+  const roomUsers = aggregatePresenceUsers(
+    Array.from(connectedUsers.values()).filter((user) =>
+      user.projectIds.has(projectId),
+    ),
+  );
 
   io.to(`project:${projectId}`).emit("presence:project", {
     projectId,
@@ -45,7 +74,7 @@ const broadcastProjectPresence = (io: Server, projectId: string) => {
 export const initializeSocket = (httpServer: HttpServer) => {
   const io = new Server(httpServer, {
     cors: {
-      origin: process.env.CLIENT_URL || "http://localhost:5173",
+      origin: env.clientUrl,
       credentials: true,
     },
   });
@@ -67,6 +96,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
       role: user.role,
       socketId: socket.id,
       projectIds: new Set(),
+      projectTaskIds: new Map(),
     });
     socket.join(`user:${user.userId}`);
 
@@ -95,6 +125,18 @@ export const initializeSocket = (httpServer: HttpServer) => {
         }
 
         socket.join(`project:${projectId}`);
+        if (user.role === "ADMIN" || user.role === "PROJECT_MANAGER") {
+          socket.join(`project:${projectId}:staff`);
+        } else if (user.role === "DEVELOPER") {
+          const taskIds = await getDeveloperProjectTaskIds(
+            user.userId,
+            projectId,
+          );
+          taskIds.forEach((taskId) => socket.join(`task:${taskId}`));
+
+          const currentUser = connectedUsers.get(socket.id);
+          currentUser?.projectTaskIds.set(projectId, new Set(taskIds));
+        }
 
         const currentUser = connectedUsers.get(socket.id);
         if (currentUser) {
@@ -122,10 +164,15 @@ export const initializeSocket = (httpServer: HttpServer) => {
 
     socket.on("project:leave", (projectId: string) => {
       socket.leave(`project:${projectId}`);
+      socket.leave(`project:${projectId}:staff`);
 
       const currentUser = connectedUsers.get(socket.id);
       if (currentUser) {
         currentUser.projectIds.delete(projectId);
+        currentUser.projectTaskIds.get(projectId)?.forEach((taskId) => {
+          socket.leave(`task:${taskId}`);
+        });
+        currentUser.projectTaskIds.delete(projectId);
       }
 
       broadcastProjectPresence(io, projectId);

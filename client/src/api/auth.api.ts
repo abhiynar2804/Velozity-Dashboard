@@ -2,7 +2,7 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'ADMIN' | 'PROJECT_MANAGER' | 'DEVELOPER';
+  role: "ADMIN" | "PROJECT_MANAGER" | "DEVELOPER";
   createdAt?: string;
 }
 
@@ -15,7 +15,8 @@ export interface AuthResponse {
   };
 }
 
-const API_BASE_URL = 'http://localhost:5000/api';
+const API_BASE_URL =
+  import.meta.env.VITE_API_URL?.trim() || "http://localhost:5000/api";
 
 // In-memory access token storage (Refresh token stays securely in HttpOnly cookie)
 let currentAccessToken: string | null = null;
@@ -30,11 +31,16 @@ export const authApi = {
   /**
    * Register new user
    */
-  async register(name: string, email: string, password: string, role: string = 'DEVELOPER') {
+  async register(
+    name: string,
+    email: string,
+    password: string,
+    role: string = "DEVELOPER",
+  ) {
     const res = await fetch(`${API_BASE_URL}/auth/register`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // Includes HttpOnly cookies
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // Includes HttpOnly cookies
       body: JSON.stringify({ name, email, password, role }),
     });
 
@@ -50,9 +56,9 @@ export const authApi = {
    */
   async login(email: string, password: string) {
     const res = await fetch(`${API_BASE_URL}/auth/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include', // Includes HttpOnly cookies
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include", // Includes HttpOnly cookies
       body: JSON.stringify({ email, password }),
     });
 
@@ -68,8 +74,8 @@ export const authApi = {
    */
   async refresh() {
     const res = await fetch(`${API_BASE_URL}/auth/refresh`, {
-      method: 'POST',
-      credentials: 'include',
+      method: "POST",
+      credentials: "include",
     });
 
     const data: AuthResponse = await res.json();
@@ -86,8 +92,8 @@ export const authApi = {
    */
   async logout() {
     const res = await fetch(`${API_BASE_URL}/auth/logout`, {
-      method: 'POST',
-      credentials: 'include',
+      method: "POST",
+      credentials: "include",
     });
     setAccessToken(null);
     return res.json();
@@ -97,7 +103,7 @@ export const authApi = {
    * Get current authenticated user profile
    */
   async getMe() {
-    return authFetch('/auth/me');
+    return authFetch("/auth/me");
   },
 };
 
@@ -107,24 +113,24 @@ export const authApi = {
 export async function authFetch(endpoint: string, options: RequestInit = {}) {
   const headers = new Headers(options.headers || {});
   if (currentAccessToken) {
-    headers.set('Authorization', `Bearer ${currentAccessToken}`);
+    headers.set("Authorization", `Bearer ${currentAccessToken}`);
   }
 
   let res = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,
-    credentials: 'include',
+    credentials: "include",
   });
 
   // If unauthorized, attempt one-time refresh via HttpOnly cookie
   if (res.status === 401) {
     const refreshResult = await authApi.refresh();
     if (refreshResult.success && refreshResult.data?.accessToken) {
-      headers.set('Authorization', `Bearer ${refreshResult.data.accessToken}`);
+      headers.set("Authorization", `Bearer ${refreshResult.data.accessToken}`);
       res = await fetch(`${API_BASE_URL}${endpoint}`, {
         ...options,
         headers,
-        credentials: 'include',
+        credentials: "include",
       });
     }
   }

@@ -17,6 +17,7 @@ import { createServer } from "http";
 import { initializeSocket } from "./socket/socket.server";
 import { taskService } from "./services/task.service";
 import { startOverdueScheduler } from "./jobs/overdue.scheduler";
+import { env } from "./config/env";
 
 export const app: Express = express();
 const port = process.env.PORT || 5000;
@@ -25,7 +26,7 @@ const port = process.env.PORT || 5000;
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CLIENT_URL || true, // Allow frontend origin
+    origin: env.clientUrl,
     credentials: true, // Allow cookies across origins
   }),
 );
@@ -41,13 +42,11 @@ if (process.env.NODE_ENV !== "test") {
 app.get("/health", async (req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
-    res
-      .status(200)
-      .json(
-        ApiResponse.success("Server is healthy and DB is connected", {
-          status: "ok",
-        }),
-      );
+    res.status(200).json(
+      ApiResponse.success("Server is healthy and DB is connected", {
+        status: "ok",
+      }),
+    );
   } catch (error: any) {
     res
       .status(500)
