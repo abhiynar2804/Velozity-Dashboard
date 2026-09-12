@@ -1,13 +1,13 @@
-import prisma from '../utils/prisma';
-import { hashPassword, comparePassword } from '../utils/password.utils';
+import prisma from "../utils/prisma";
+import { hashPassword, comparePassword } from "../utils/password.utils";
 import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
   hashToken,
-} from '../utils/token.utils';
-import { RegisterInput, LoginInput } from '../validators/auth.validator';
-import { UserRole } from '@prisma/client';
+} from "../utils/token.utils";
+import { RegisterInput, LoginInput } from "../validators/auth.validator";
+import { UserRole } from "@prisma/client";
 
 export class AppError extends Error {
   statusCode: number;
@@ -43,7 +43,7 @@ export class AuthService {
     });
 
     if (existingUser) {
-      throw new AppError('Email is already registered', 409);
+      throw new AppError("Email is already registered", 409);
     }
 
     const passwordHash = await hashPassword(input.password);
@@ -53,7 +53,7 @@ export class AuthService {
         name: input.name,
         email: input.email.toLowerCase(),
         passwordHash,
-        role: input.role || UserRole.DEVELOPER,
+        role: UserRole.DEVELOPER,
       },
       select: {
         id: true,
@@ -101,12 +101,15 @@ export class AuthService {
     });
 
     if (!user) {
-      throw new AppError('Invalid email or password', 401);
+      throw new AppError("Invalid email or password", 401);
     }
 
-    const isPasswordValid = await comparePassword(input.password, user.passwordHash);
+    const isPasswordValid = await comparePassword(
+      input.password,
+      user.passwordHash,
+    );
     if (!isPasswordValid) {
-      throw new AppError('Invalid email or password', 401);
+      throw new AppError("Invalid email or password", 401);
     }
 
     const accessToken = generateAccessToken({
@@ -146,16 +149,22 @@ export class AuthService {
   /**
    * Refresh access and refresh tokens
    */
-  async refresh(refreshTokenString: string): Promise<{ accessToken: string; refreshToken: string; user: UserResponse }> {
+  async refresh(
+    refreshTokenString: string,
+  ): Promise<{
+    accessToken: string;
+    refreshToken: string;
+    user: UserResponse;
+  }> {
     if (!refreshTokenString) {
-      throw new AppError('Refresh token required', 401);
+      throw new AppError("Refresh token required", 401);
     }
 
     let payload;
     try {
       payload = verifyRefreshToken(refreshTokenString);
     } catch (err: any) {
-      throw new AppError('Invalid or expired refresh token', 401);
+      throw new AppError("Invalid or expired refresh token", 401);
     }
 
     const incomingTokenHash = hashToken(refreshTokenString);
@@ -166,7 +175,7 @@ export class AuthService {
     });
 
     if (!storedToken) {
-      throw new AppError('Refresh token not recognized or already used', 401);
+      throw new AppError("Refresh token not recognized or already used", 401);
     }
 
     if (storedToken.revokedAt) {
@@ -175,11 +184,11 @@ export class AuthService {
         where: { userId: storedToken.userId, revokedAt: null },
         data: { revokedAt: new Date() },
       });
-      throw new AppError('Refresh token has been revoked', 403);
+      throw new AppError("Refresh token has been revoked", 403);
     }
 
     if (new Date() > storedToken.expiresAt) {
-      throw new AppError('Refresh token has expired', 401);
+      throw new AppError("Refresh token has expired", 401);
     }
 
     // Invalidate old token (Rotation)

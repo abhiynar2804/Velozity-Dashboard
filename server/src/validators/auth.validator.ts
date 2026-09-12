@@ -10,7 +10,6 @@ export const registerSchema = z.object({
     .string()
     .min(6, "Password must be at least 6 characters long")
     .max(100),
-  role: z.nativeEnum(UserRole).optional().default(UserRole.DEVELOPER),
 });
 
 export const loginSchema = z.object({

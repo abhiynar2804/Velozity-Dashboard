@@ -34,7 +34,7 @@ class AuthService {
                 name: input.name,
                 email: input.email.toLowerCase(),
                 passwordHash,
-                role: input.role || client_1.UserRole.DEVELOPER,
+                role: client_1.UserRole.DEVELOPER,
             },
             select: {
                 id: true,

@@ -7,6 +7,27 @@ process.env.NODE_ENV = 'test';
 const http_1 = __importDefault(require("http"));
 const index_1 = __importDefault(require("./index"));
 const prisma_1 = __importDefault(require("./utils/prisma"));
+const token_utils_1 = require("./utils/token.utils");
+const client_1 = require("@prisma/client");
+const createTestUser = async (name, email, role) => {
+    const user = await prisma_1.default.user.create({
+        data: {
+            name,
+            email,
+            passwordHash: 'test-fixture-password-hash',
+            role,
+        },
+        select: { id: true, email: true, role: true },
+    });
+    return {
+        ...user,
+        accessToken: (0, token_utils_1.generateAccessToken)({
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+        }),
+    };
+};
 async function runSecurityTests() {
     console.log('🛡️ Starting Phase 3 RBAC & Security Test Suite...\n');
     const server = http_1.default.createServer(index_1.default);
@@ -24,76 +45,39 @@ async function runSecurityTests() {
         // SETUP TEST FIXTURES
         // ----------------------------------------------------
         console.log('🔧 Setting up test entities (Admin, PM1, PM2, Dev1, Dev2, Client, Projects, Tasks)...');
-        // 1. Create Admin
-        const adminRes = await fetch(`${baseUrl}/api/auth/register`, {
+        // Privileged fixtures are provisioned directly, not through public registration.
+        const admin = await createTestUser('Admin User', `admin.${timestamp}@test.com`, client_1.UserRole.ADMIN);
+        const pm1 = await createTestUser('Project Manager 1', `pm1.${timestamp}@test.com`, client_1.UserRole.PROJECT_MANAGER);
+        const pm2 = await createTestUser('Project Manager 2', `pm2.${timestamp}@test.com`, client_1.UserRole.PROJECT_MANAGER);
+        const dev1 = await createTestUser('Developer 1', `dev1.${timestamp}@test.com`, client_1.UserRole.DEVELOPER);
+        const dev2 = await createTestUser('Developer 2', `dev2.${timestamp}@test.com`, client_1.UserRole.DEVELOPER);
+        adminId = admin.id;
+        adminToken = admin.accessToken;
+        pm1Id = pm1.id;
+        pm1Token = pm1.accessToken;
+        pm2Id = pm2.id;
+        pm2Token = pm2.accessToken;
+        dev1Id = dev1.id;
+        dev1Token = dev1.accessToken;
+        dev2Id = dev2.id;
+        dev2Token = dev2.accessToken;
+        // Public registration must ignore privilege escalation attempts.
+        const escalationRes = await fetch(`${baseUrl}/api/auth/register`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                name: 'Admin User',
-                email: `admin.${timestamp}@test.com`,
+                name: 'Public Registration Check',
+                email: `public-registration.${timestamp}@test.com`,
                 password: 'Password123!',
                 role: 'ADMIN',
             }),
         });
-        const adminData = await adminRes.json();
-        adminId = adminData.data.user.id;
-        adminToken = adminData.data.accessToken;
-        // 2. Create PM 1
-        const pm1Res = await fetch(`${baseUrl}/api/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: 'Project Manager 1',
-                email: `pm1.${timestamp}@test.com`,
-                password: 'Password123!',
-                role: 'PROJECT_MANAGER',
-            }),
-        });
-        const pm1Data = await pm1Res.json();
-        pm1Id = pm1Data.data.user.id;
-        pm1Token = pm1Data.data.accessToken;
-        // 3. Create PM 2
-        const pm2Res = await fetch(`${baseUrl}/api/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: 'Project Manager 2',
-                email: `pm2.${timestamp}@test.com`,
-                password: 'Password123!',
-                role: 'PROJECT_MANAGER',
-            }),
-        });
-        const pm2Data = await pm2Res.json();
-        pm2Id = pm2Data.data.user.id;
-        pm2Token = pm2Data.data.accessToken;
-        // 4. Create Developer 1
-        const dev1Res = await fetch(`${baseUrl}/api/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: 'Developer 1',
-                email: `dev1.${timestamp}@test.com`,
-                password: 'Password123!',
-                role: 'DEVELOPER',
-            }),
-        });
-        const dev1Data = await dev1Res.json();
-        dev1Id = dev1Data.data.user.id;
-        dev1Token = dev1Data.data.accessToken;
-        // 5. Create Developer 2
-        const dev2Res = await fetch(`${baseUrl}/api/auth/register`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                name: 'Developer 2',
-                email: `dev2.${timestamp}@test.com`,
-                password: 'Password123!',
-                role: 'DEVELOPER',
-            }),
-        });
-        const dev2Data = await dev2Res.json();
-        dev2Id = dev2Data.data.user.id;
-        dev2Token = dev2Data.data.accessToken;
+        const escalationData = await escalationRes.json();
+        if (escalationRes.status !== 201 || escalationData.data.user.role !== client_1.UserRole.DEVELOPER) {
+            throw new Error(`Public registration accepted an elevated role: ${JSON.stringify(escalationData)}`);
+        }
+        await prisma_1.default.refreshToken.deleteMany({ where: { userId: escalationData.data.user.id } });
+        await prisma_1.default.user.delete({ where: { id: escalationData.data.user.id } });
         // 6. Admin creates Client
         const clientRes = await fetch(`${baseUrl}/api/clients`, {
             method: 'POST',

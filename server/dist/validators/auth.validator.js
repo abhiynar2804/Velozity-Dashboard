@@ -3,7 +3,6 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.idParamSchema = exports.validateParams = exports.validateQuery = exports.validate = exports.loginSchema = exports.registerSchema = void 0;
 const zod_1 = require("zod");
 const ApiResponse_1 = require("../utils/ApiResponse");
-const client_1 = require("@prisma/client");
 exports.registerSchema = zod_1.z.object({
     name: zod_1.z.string().min(2, "Name must be at least 2 characters long").max(100),
     email: zod_1.z.string().email("Invalid email address"),
@@ -11,7 +10,6 @@ exports.registerSchema = zod_1.z.object({
         .string()
         .min(6, "Password must be at least 6 characters long")
         .max(100),
-    role: zod_1.z.nativeEnum(client_1.UserRole).optional().default(client_1.UserRole.DEVELOPER),
 });
 exports.loginSchema = zod_1.z.object({
     email: zod_1.z.string().email("Invalid email address"),
