@@ -34,8 +34,16 @@ export const socket: Socket = io(SOCKET_URL, {
   autoConnect: false,
 });
 
-export const setSocketAuthToken = (accessToken: string | null): void => {
+export const setSocketAuthToken = (
+  accessToken: string | null,
+  reconnect = false,
+): void => {
   socket.auth = accessToken ? { token: accessToken } : {};
+
+  if (reconnect && accessToken && socket.connected) {
+    socket.disconnect();
+    socket.connect();
+  }
 };
 
 export const connectSocket = (accessToken: string): void => {

@@ -23,9 +23,12 @@ const API_BASE_URL =
 // In-memory access token storage (Refresh token stays securely in HttpOnly cookie)
 let currentAccessToken: string | null = null;
 
-export const setAccessToken = (token: string | null) => {
+export const setAccessToken = (
+  token: string | null,
+  reconnectSocket = false,
+) => {
   currentAccessToken = token;
-  setSocketAuthToken(token);
+  setSocketAuthToken(token, reconnectSocket);
 };
 
 export const getAccessToken = () => currentAccessToken;
@@ -49,8 +52,8 @@ export const authApi = {
 
     const data: AuthResponse = await res.json();
     if (data.success && data.data?.accessToken) {
-      setAccessToken(data.data.accessToken);
-    }
+  setAccessToken(data.data.accessToken, true);
+}
     return data;
   },
 
