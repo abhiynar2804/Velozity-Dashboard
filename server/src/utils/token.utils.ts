@@ -1,6 +1,7 @@
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import { UserRole } from '@prisma/client';
+import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import { UserRole } from "@prisma/client";
+import { env } from "../config/env";
 
 export interface AccessTokenPayload {
   userId: string;
@@ -15,46 +16,44 @@ export interface RefreshTokenPayload {
   jti?: string;
 }
 
-const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'velozity_super_secret_access_jwt_key_2026';
-const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'velozity_super_secret_refresh_jwt_key_2026';
-
-const JWT_ACCESS_EXPIRES_IN = process.env.JWT_ACCESS_EXPIRES_IN || '15m';
-const JWT_REFRESH_EXPIRES_IN = process.env.JWT_REFRESH_EXPIRES_IN || '7d';
-
-export const generateAccessToken = (payload: Omit<AccessTokenPayload, 'jti'>): string => {
+export const generateAccessToken = (
+  payload: Omit<AccessTokenPayload, "jti">,
+): string => {
   return jwt.sign(
     {
       ...payload,
       jti: crypto.randomUUID(),
     },
-    JWT_ACCESS_SECRET,
+    env.jwtAccessSecret,
     {
-      expiresIn: JWT_ACCESS_EXPIRES_IN,
-    } as jwt.SignOptions
+      expiresIn: env.jwtAccessExpiresIn,
+    } as jwt.SignOptions,
   );
 };
 
-export const generateRefreshToken = (payload: Omit<RefreshTokenPayload, 'jti'>): string => {
+export const generateRefreshToken = (
+  payload: Omit<RefreshTokenPayload, "jti">,
+): string => {
   return jwt.sign(
     {
       ...payload,
       jti: crypto.randomUUID(),
     },
-    JWT_REFRESH_SECRET,
+    env.jwtRefreshSecret,
     {
-      expiresIn: JWT_REFRESH_EXPIRES_IN,
-    } as jwt.SignOptions
+      expiresIn: env.jwtRefreshExpiresIn,
+    } as jwt.SignOptions,
   );
 };
 
 export const verifyAccessToken = (token: string): AccessTokenPayload => {
-  return jwt.verify(token, JWT_ACCESS_SECRET) as AccessTokenPayload;
+  return jwt.verify(token, env.jwtAccessSecret) as AccessTokenPayload;
 };
 
 export const verifyRefreshToken = (token: string): RefreshTokenPayload => {
-  return jwt.verify(token, JWT_REFRESH_SECRET) as RefreshTokenPayload;
+  return jwt.verify(token, env.jwtRefreshSecret) as RefreshTokenPayload;
 };
 
 export const hashToken = (token: string): string => {
-  return crypto.createHash('sha256').update(token).digest('hex');
+  return crypto.createHash("sha256").update(token).digest("hex");
 };

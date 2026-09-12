@@ -1,4 +1,13 @@
 node_modules
 
+.env
+.env.*
+!.env.example
+
 /generated/prisma
 
+.agents
+.claude
+.windsurf
+
+.gitignore
