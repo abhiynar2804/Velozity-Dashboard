@@ -68,6 +68,7 @@ export const initializeSocket = (httpServer: HttpServer) => {
       socketId: socket.id,
       projectIds: new Set(),
     });
+    socket.join(`user:${user.userId}`);
 
     console.log(`🔌 User connected: ${user.userId}`);
     broadcastPresence(io);

@@ -9,7 +9,7 @@ import { AppError } from "./auth.service";
 import { CreateTaskInput, UpdateTaskInput } from "../validators/task.validator";
 import { AccessTokenPayload } from "../utils/token.utils";
 import { Server } from "socket.io";
-import { emitActivity } from "../socket/socket.events";
+import { emitActivity, emitNotification } from "../socket/socket.events";
 
 export class TaskService {
   private io?: Server;
@@ -131,13 +131,17 @@ export class TaskService {
 
     // Notify assigned developer
     if (task.assignedDeveloperId) {
-      await prisma.notification.create({
+      const notification = await prisma.notification.create({
         data: {
           userId: task.assignedDeveloperId,
           type: NotificationType.TASK_ASSIGNED,
           message: `You have been assigned to task: "${task.title}" in project "${project.name}"`,
         },
       });
+
+      if (this.io) {
+        emitNotification(this.io, notification);
+      }
     }
 
     return task;
@@ -251,6 +255,7 @@ export class TaskService {
       const oldStatus = task.status;
       const newStatus = input.status;
       let activityToEmit;
+      let notificationToEmit;
 
       const updatedTask = await prisma.$transaction(async (tx) => {
         const updatedTask = await tx.task.update({
@@ -276,7 +281,7 @@ export class TaskService {
           });
 
           if (newStatus === TaskStatus.IN_REVIEW) {
-            await tx.notification.create({
+            notificationToEmit = await tx.notification.create({
               data: {
                 userId: task.project.createdById,
                 type: NotificationType.TASK_IN_REVIEW,
@@ -291,6 +296,9 @@ export class TaskService {
 
       if (activityToEmit && this.io) {
         emitActivity(this.io, activityToEmit);
+      }
+      if (notificationToEmit && this.io) {
+        emitNotification(this.io, notificationToEmit);
       }
 
       return updatedTask;
@@ -311,6 +319,7 @@ export class TaskService {
     const oldStatus = task.status;
     const updateData: any = {};
     let activityToEmit;
+    let notificationToEmit;
 
     if (input.title !== undefined) updateData.title = input.title;
     if (input.description !== undefined)
@@ -357,7 +366,7 @@ export class TaskService {
         input.assignedDeveloperId &&
         input.assignedDeveloperId !== task.assignedDeveloperId
       ) {
-        await tx.notification.create({
+        notificationToEmit = await tx.notification.create({
           data: {
             userId: input.assignedDeveloperId,
             type: NotificationType.TASK_ASSIGNED,
@@ -372,6 +381,9 @@ export class TaskService {
     const io = this.io;
     if (activityToEmit && io) {
       emitActivity(io, activityToEmit);
+    }
+    if (notificationToEmit && io) {
+      emitNotification(io, notificationToEmit);
     }
 
     return updatedTask;

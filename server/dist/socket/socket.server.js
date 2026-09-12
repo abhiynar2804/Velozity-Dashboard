@@ -51,6 +51,7 @@ const initializeSocket = (httpServer) => {
             socketId: socket.id,
             projectIds: new Set(),
         });
+        socket.join(`user:${user.userId}`);
         console.log(`🔌 User connected: ${user.userId}`);
         broadcastPresence(io);
         socket.on("project:join", async (projectId) => {

@@ -101,13 +101,16 @@ class TaskService {
         });
         // Notify assigned developer
         if (task.assignedDeveloperId) {
-            await prisma_1.default.notification.create({
+            const notification = await prisma_1.default.notification.create({
                 data: {
                     userId: task.assignedDeveloperId,
                     type: client_1.NotificationType.TASK_ASSIGNED,
                     message: `You have been assigned to task: "${task.title}" in project "${project.name}"`,
                 },
             });
+            if (this.io) {
+                (0, socket_events_1.emitNotification)(this.io, notification);
+            }
         }
         return task;
     }
@@ -190,6 +193,7 @@ class TaskService {
             const oldStatus = task.status;
             const newStatus = input.status;
             let activityToEmit;
+            let notificationToEmit;
             const updatedTask = await prisma_1.default.$transaction(async (tx) => {
                 const updatedTask = await tx.task.update({
                     where: { id: taskId },
@@ -212,7 +216,7 @@ class TaskService {
                         },
                     });
                     if (newStatus === client_1.TaskStatus.IN_REVIEW) {
-                        await tx.notification.create({
+                        notificationToEmit = await tx.notification.create({
                             data: {
                                 userId: task.project.createdById,
                                 type: client_1.NotificationType.TASK_IN_REVIEW,
@@ -226,6 +230,9 @@ class TaskService {
             if (activityToEmit && this.io) {
                 (0, socket_events_1.emitActivity)(this.io, activityToEmit);
             }
+            if (notificationToEmit && this.io) {
+                (0, socket_events_1.emitNotification)(this.io, notificationToEmit);
+            }
             return updatedTask;
         }
         // PM authorization check
@@ -237,6 +244,7 @@ class TaskService {
         const oldStatus = task.status;
         const updateData = {};
         let activityToEmit;
+        let notificationToEmit;
         if (input.title !== undefined)
             updateData.title = input.title;
         if (input.description !== undefined)
@@ -280,7 +288,7 @@ class TaskService {
             }
             if (input.assignedDeveloperId &&
                 input.assignedDeveloperId !== task.assignedDeveloperId) {
-                await tx.notification.create({
+                notificationToEmit = await tx.notification.create({
                     data: {
                         userId: input.assignedDeveloperId,
                         type: client_1.NotificationType.TASK_ASSIGNED,
@@ -293,6 +301,9 @@ class TaskService {
         const io = this.io;
         if (activityToEmit && io) {
             (0, socket_events_1.emitActivity)(io, activityToEmit);
+        }
+        if (notificationToEmit && io) {
+            (0, socket_events_1.emitNotification)(io, notificationToEmit);
         }
         return updatedTask;
     }

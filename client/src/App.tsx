@@ -8,6 +8,7 @@ import {
   socket,
   type PresencePayload,
   type ProjectPresencePayload,
+  type NotificationEvent,
 } from "./services/socket";
 
 interface ActivityEvent {
@@ -20,6 +21,8 @@ interface ActivityEvent {
   createdAt: string;
 }
 
+type Notification = NotificationEvent;
+
 export default function App() {
   const [projectId, setProjectId] = useState("");
   const [joinedProject, setJoinedProject] = useState("");
@@ -28,6 +31,16 @@ export default function App() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [onlineUsers, setOnlineUsers] = useState<string[]>([]);
   const [projectUsers, setProjectUsers] = useState<string[]>([]);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const fetchNotifications = async () => {
+    try {
+      const response = await authFetch("/activities/notifications");
+      setNotifications(Array.isArray(response?.data) ? response.data : []);
+    } catch (error) {
+      console.error("Failed to load notifications:", error);
+    }
+  };
 
   const fetchMissedActivities = async (nextProjectId: string) => {
     try {
@@ -78,6 +91,14 @@ export default function App() {
     const handleActivity = (activity: ActivityEvent) => {
       setActivities((current) => [activity, ...current].slice(0, 20));
     };
+    const handleNotification = (notification: NotificationEvent) => {
+      setNotifications((current) => {
+        if (current.some((item) => item.id === notification.id)) {
+          return current;
+        }
+        return [notification, ...current].slice(0, 50);
+      });
+    };
     const handleJoined = ({
       projectId: nextProjectId,
     }: {
@@ -102,16 +123,19 @@ export default function App() {
     socket.on("disconnect", handleDisconnect);
     socket.on("connect_error", handleConnectError);
     socket.on("activity:created", handleActivity);
+    socket.on("notification:created", handleNotification);
     socket.on("project:joined", handleJoined);
     socket.on("presence:updated", handlePresenceUpdated);
     socket.on("presence:project", handleProjectPresence);
     connectSocket(accessToken);
+    void fetchNotifications();
 
     return () => {
       socket.off("connect", handleConnect);
       socket.off("disconnect", handleDisconnect);
       socket.off("connect_error", handleConnectError);
       socket.off("activity:created", handleActivity);
+      socket.off("notification:created", handleNotification);
       socket.off("project:joined", handleJoined);
       socket.off("presence:updated", handlePresenceUpdated);
       socket.off("presence:project", handleProjectPresence);
@@ -141,6 +165,10 @@ export default function App() {
       <h1>Project activity stream</h1>
       <p className="status">Socket status: {connectionState}</p>
       <p className="status">Online users: {onlineCount}</p>
+      <p className="status">
+        Unread notifications:{" "}
+        {notifications.filter((notification) => !notification.read).length}
+      </p>
       <p className="status">
         Active now: {onlineUsers.length > 0 ? onlineUsers.join(", ") : "No one"}
       </p>
@@ -173,6 +201,21 @@ export default function App() {
           {projectUsers.length > 0 ? projectUsers.join(", ") : "No one"}
         </p>
       )}
+      <section className="activity-list" aria-live="polite">
+        {notifications.length === 0 ? (
+          <p className="empty">No notifications yet.</p>
+        ) : (
+          notifications.map((notification) => (
+            <article className="activity" key={notification.id}>
+              <strong>{notification.type}</strong>
+              <span>{notification.message}</span>
+              <time dateTime={notification.createdAt}>
+                {new Date(notification.createdAt).toLocaleString()}
+              </time>
+            </article>
+          ))
+        )}
+      </section>
       <section className="activity-list" aria-live="polite">
         {activities.length === 0 ? (
           <p className="empty">Waiting for activity events...</p>

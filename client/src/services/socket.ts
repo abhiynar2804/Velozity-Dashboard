@@ -21,6 +21,15 @@ export interface ProjectPresencePayload {
   users: PresenceUser[];
 }
 
+export interface NotificationEvent {
+  id: string;
+  userId: string;
+  type: string;
+  message: string;
+  read: boolean;
+  createdAt: string;
+}
+
 export const socket: Socket = io(SOCKET_URL, {
   autoConnect: false,
 });
